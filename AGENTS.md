@@ -1,8 +1,8 @@
 # AGENTS.md
 
 Conventions for anyone (human or LLM) contributing to p5.toolbar. Read this before
-opening a PR — it captures decisions already made in the project spec so they don't get
-reinvented or reversed by accident.
+opening a PR — it captures decisions already made during the project's design, so they
+don't get reinvented or reversed by accident.
 
 ## What this project is
 
@@ -27,13 +27,28 @@ jsDelivr, no npm package, no bundler.
   `<script src="...">` tag — not dynamically injected, and not `async`/`defer`/
   `type="module"` — since `document.currentScript` is only reliable during a script's
   initial synchronous execution.
+- **CSS is scoped under `.p5toolbar`/`.p5toolbar-*`, with one deliberate exception: the
+  shared custom-property scale** (colors, spacing, sizes — see the top of
+  `p5.toolbar.css`) **lives on `:root`, not `.p5toolbar`.** That's not an oversight —
+  `.p5toolbar-grid-readout` (and any future widget that needs its own floating element)
+  is a `document.body` child, not a descendant of `.p5toolbar`, so it can't inherit
+  anything scoped there. `:root` is the only place both can genuinely share via real CSS
+  inheritance instead of hand-copied local redeclarations. The `--p5toolbar-` prefix
+  keeps the collision risk with a host page's own custom properties effectively nil.
+  `document.documentElement.dataset.theme` (not `.p5toolbar`'s own) is what the dark-mode
+  override actually keys off — see `applyTheme()`.
 - **Widgets register themselves.** Built-in widgets use the same
   `P5Toolbar.registerWidget(name, definition)` call a third-party widget would use —
   nothing is special-cased internally. Third-party widgets can live entirely outside this
   repo; they only need `P5Toolbar` on `window` before calling `registerWidget()`.
-- **Cursor state goes through the shell's resolver.** Multiple widgets may want
-  `canvas.style.cursor`. Widgets declare intent to the shell; the shell alone writes
-  `canvas.style.cursor`, applying one fixed priority (hide-cursor wins over crosshair).
+- **Cursor state goes through the shell's resolver, and cursor-setting widgets are
+  mutually exclusive.** Widgets declare intent to the shell; the shell alone writes
+  `canvas.style.cursor`. Turning one cursor-setting widget on (e.g. `grid`) automatically
+  turns any other one off first (e.g. `hideCursor`) — via a real `.click()` on the other
+  widget's own button, not a shortcut around it, so that widget's own `onToggle` cleanup
+  (rAF loops, DOM teardown, etc.) still runs correctly. A priority list
+  (`CURSOR_PRIORITY`) still resolves the final `canvas.style.cursor` value from whatever
+  ends up registered, as a fallback — in practice that's normally at most one entry.
   Never set `canvas.style.cursor` directly from a widget.
 - **Config lives in `index.html`, never in `sketch.js`** — via the `P5Toolbar.init({...})`
   call, so the file students actually edit stays uncluttered.
@@ -74,10 +89,11 @@ Every widget — built-in or third-party — is a plain object passed to
   It only fires for widgets actually included in the active `widgets` config array (bound
   per-instance in `renderWidget()`, not scanned across the whole registry), and it's
   wired generically — no shell code is specific to any one widget's shortcut.
-- Only widgets that genuinely need a non-visual way to reach their own toggle should get
-  a `shortcut` (e.g. `hideCursor`: with the cursor hidden, clicking a small button to turn
-  it back on is itself hard to aim). Don't hand out shortcuts by default — they're global
-  and can collide with a student's own `keyPressed()` bindings.
+- `shortcut` is opt-in per widget, not automatic — they're global and can collide with a
+  student's own `keyPressed()` bindings. Reach for one when a widget is either hard to
+  toggle by other means (`hideCursor`: with the cursor hidden, clicking a small button to
+  turn it back on is itself hard to aim) or expected to be toggled often enough during a
+  session that reaching for the mouse each time is real friction (`grid`: `Shift+G`).
 
 ## Repo layout
 

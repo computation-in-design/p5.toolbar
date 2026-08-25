@@ -20,6 +20,7 @@
     position: "Reposition toolbar",
     hide: "Hide toolbar",
     hideCursor: { off: "Hide cursor", on: "Show cursor" },
+    grid: { off: "Show grid", on: "Hide grid" },
   };
 
   // ---------------------------------------------------------------------------------
@@ -53,8 +54,8 @@
       "</svg>",
   };
 
-  // Both states keep the stroke outline — "on" just adds a fill on top — so the
-  // silhouette's outer edge doesn't shift size when toggling.
+  // Both states keep the stroke outline; "on" adds a fill on top, so the silhouette's
+  // outer edge doesn't shift size when toggling.
   const CURSOR_ARROW_PATH = "M4.3 4L11 20L13 12.3L19.7 10.2Z";
   ICONS.cursor = {
     off: "<svg " + ICON_ATTRS + '><path d="' + CURSOR_ARROW_PATH + '"></path></svg>',
@@ -65,6 +66,43 @@
       CURSOR_ARROW_PATH +
       '" fill="currentColor"></path></svg>',
   };
+
+  // Grid icon — rounded-rect frame + a full-bleed plus sign, both stroked, no fill. On:
+  // the frame keeps its stroke (so the outer edge doesn't shift size — same reasoning as
+  // the cursor icon above) and adds a currentColor fill; the plus switches to
+  // var(--p5toolbar-bg) — already in scope, since the icon always renders inside
+  // .p5toolbar — with a square cap (overriding ICON_ATTRS's round default), so it reads
+  // as a clean cutout through the filled square rather than a stroke drawn on top of it.
+  const GRID_FRAME_PATH = '<rect x="3" y="3" width="18" height="18" rx="3"';
+  ICONS.grid = {
+    off:
+      "<svg " +
+      ICON_ATTRS +
+      ">" +
+      GRID_FRAME_PATH +
+      "></rect>" +
+      '<path d="M12 3V21M3 12H21"></path>' +
+      "</svg>",
+    on:
+      "<svg " +
+      ICON_ATTRS +
+      ">" +
+      GRID_FRAME_PATH +
+      ' fill="currentColor"></rect>' +
+      '<path d="M12 3V21M3 12H21" stroke="var(--p5toolbar-bg)" stroke-width="2.5" stroke-linecap="square"></path>' +
+      "</svg>",
+  };
+
+  // Invert icon (grid readout's contrast toggle) — outlined circle, left half filled
+  // solid. Standard "invert/contrast" glyph; the semicircle is one arc command closed by
+  // a straight line down the vertical diameter, so no separate half-circle path data.
+  ICONS.invert =
+    "<svg " +
+    ICON_ATTRS +
+    ">" +
+    '<circle cx="12" cy="12" r="9"></circle>' +
+    '<path d="M12 3A9 9 0 0 0 12 21Z" fill="currentColor" stroke="none"></path>' +
+    "</svg>";
 
   // Position icon — rounded-rect frame with one edge's middle third filled, matching the
   // current edge. Swapped by updatePositionButton().
@@ -128,11 +166,14 @@
 
   // ---------------------------------------------------------------------------------
   // Cursor-state resolver — widgets declare intent, this is the only code that writes
-  // canvas.style.cursor. Priority: earlier entries win over later ones.
+  // canvas.style.cursor. Priority: earlier entries win over later ones (kept as a
+  // fallback even though setCursorIntent's mutual exclusion below means at most one
+  // intent is normally registered at a time).
   // ---------------------------------------------------------------------------------
 
   const CURSOR_PRIORITY = ["none", "crosshair"];
   const cursorIntents = new Map();
+  const widgetButtons = {}; // id -> button element, populated by renderWidget()
   let canvasEl = null;
 
   function applyCursor() {
@@ -147,7 +188,15 @@
     canvasEl.style.cursor = "";
   }
 
+  // Cursor-setting widgets are mutually exclusive — turning one on turns any other off
+  // first, via the same button click a real user would make (not a shortcut around it),
+  // so the other widget's own onToggle cleanup (rAF loops, DOM teardown, etc.) still runs.
   function setCursorIntent(widgetId, value) {
+    cursorIntents.forEach(function (_, otherId) {
+      if (otherId !== widgetId && widgetButtons[otherId]) {
+        widgetButtons[otherId].click();
+      }
+    });
     cursorIntents.set(widgetId, value);
     applyCursor();
   }
@@ -230,7 +279,10 @@
 
   function applyTheme() {
     state.theme = resolveEffectiveTheme();
-    els.root.dataset.theme = state.theme;
+    // On <html>, not .p5toolbar — the theme custom properties live on :root now (see
+    // p5.toolbar.css), so every themed element (including .p5toolbar-grid-readout,
+    // which can't inherit from .p5toolbar itself) picks this up automatically.
+    document.documentElement.dataset.theme = state.theme;
     updateThemeButton();
   }
 
@@ -238,7 +290,7 @@
     // Session-only, deliberately never persisted — next load always starts from OS preference.
     state.themeOverridden = true;
     state.theme = state.theme === "dark" ? "light" : "dark";
-    els.root.dataset.theme = state.theme;
+    document.documentElement.dataset.theme = state.theme;
     updateThemeButton();
   }
 
@@ -497,6 +549,7 @@
         btn.click();
       });
     }
+    widgetButtons[id] = btn;
     els.widgets.appendChild(btn);
   }
 
@@ -579,6 +632,122 @@
         ctx.setCursor("none");
       } else {
         ctx.clearCursor();
+      }
+    },
+  });
+
+  // ---------------------------------------------------------------------------------
+  // Built-in widget: grid overlay — registered the same way as hideCursor above; also
+  // sets cursor intent via ctx.setCursor(), so setCursorIntent's mutual exclusion applies.
+  //
+  // .p5toolbar-grid and .p5toolbar-grid-readout are siblings of .p5toolbar under
+  // document.body, not descendants — .p5toolbar has a transform (for its own edge
+  // centering), and per the CSS spec a transformed ancestor becomes the containing block
+  // for position:fixed descendants at any depth, which would silently break the
+  // canvas-relative positioning here. .p5toolbar's own huge z-index still renders it
+  // above both regardless of DOM order, so neither new element needs its own z-index.
+  // ---------------------------------------------------------------------------------
+
+  const GRID_SIZE_PX = 50; // not exposed via config for v0
+
+  let gridOverlayEl = null;
+  let gridReadoutEl = null;
+  let gridCoordsEl = null;
+  let gridRafId = null;
+  let gridInverted = false;
+  let gridResizeObserver = null;
+  let gridResizeHandler = null;
+
+  function syncGridRect() {
+    if (!gridOverlayEl || !gridReadoutEl || !canvasEl) return;
+    const rect = canvasEl.getBoundingClientRect();
+    gridOverlayEl.style.left = rect.left + "px";
+    gridOverlayEl.style.top = rect.top + "px";
+    gridOverlayEl.style.width = rect.width + "px";
+    gridOverlayEl.style.height = rect.height + "px";
+    gridReadoutEl.style.left = rect.left + rect.width / 2 + "px";
+    gridReadoutEl.style.top = rect.top + rect.height / 2 + "px";
+  }
+
+  function gridFrameLoop() {
+    if (!gridCoordsEl) return;
+    gridCoordsEl.textContent = Math.round(window.mouseX) + ", " + Math.round(window.mouseY);
+    gridRafId = requestAnimationFrame(gridFrameLoop);
+  }
+
+  // Manual escape hatch for mix-blend-mode:difference's weak spot: against a background
+  // near mid-gray (128,128,128), |255-128| and |0-128| are both close to 128, so neither
+  // white nor black lines get strong contrast there. Not a full fix — just gives whichever
+  // of the two happens to contrast better a chance to work.
+  function toggleGridInvert() {
+    gridInverted = !gridInverted;
+    gridOverlayEl.dataset.inverted = String(gridInverted);
+    gridReadoutEl
+      .querySelector(".p5toolbar-grid-readout__invert")
+      .setAttribute("aria-pressed", String(gridInverted));
+  }
+
+  registerWidget("grid", {
+    icon: ICONS.grid,
+    label: LABELS.grid,
+    type: "toggle",
+    shortcut: { code: "KeyG", shiftKey: true },
+    onToggle: function (active, ctx) {
+      if (active) {
+        ctx.setCursor("crosshair");
+
+        gridOverlayEl = document.createElement("div");
+        gridOverlayEl.className = "p5toolbar-grid";
+        gridOverlayEl.dataset.inverted = String(gridInverted);
+        gridOverlayEl.style.setProperty("--p5toolbar-grid-size", GRID_SIZE_PX + "px");
+
+        gridReadoutEl = document.createElement("div");
+        gridReadoutEl.className = "p5toolbar-grid-readout";
+
+        gridCoordsEl = document.createElement("span");
+        gridCoordsEl.className = "p5toolbar-grid-readout__coords";
+        gridReadoutEl.appendChild(gridCoordsEl);
+
+        const invertBtn = document.createElement("button");
+        invertBtn.type = "button";
+        invertBtn.className = "p5toolbar-grid-readout__invert";
+        invertBtn.setAttribute("aria-pressed", String(gridInverted));
+        invertBtn.setAttribute("aria-label", "Invert grid line color");
+        invertBtn.innerHTML = ICONS.invert;
+        invertBtn.addEventListener("click", toggleGridInvert);
+        gridReadoutEl.appendChild(invertBtn);
+
+        document.body.appendChild(gridOverlayEl);
+        document.body.appendChild(gridReadoutEl);
+
+        syncGridRect();
+        gridResizeHandler = syncGridRect;
+        window.addEventListener("resize", gridResizeHandler);
+        window.addEventListener("scroll", gridResizeHandler, { passive: true });
+        gridResizeObserver = new ResizeObserver(syncGridRect);
+        gridResizeObserver.observe(canvasEl);
+
+        gridRafId = requestAnimationFrame(gridFrameLoop);
+      } else {
+        ctx.clearCursor();
+
+        if (gridRafId) cancelAnimationFrame(gridRafId);
+        gridRafId = null;
+
+        if (gridResizeObserver) gridResizeObserver.disconnect();
+        gridResizeObserver = null;
+
+        if (gridResizeHandler) {
+          window.removeEventListener("resize", gridResizeHandler);
+          window.removeEventListener("scroll", gridResizeHandler);
+        }
+        gridResizeHandler = null;
+
+        if (gridOverlayEl) gridOverlayEl.remove();
+        if (gridReadoutEl) gridReadoutEl.remove();
+        gridOverlayEl = null;
+        gridReadoutEl = null;
+        gridCoordsEl = null;
       }
     },
   });

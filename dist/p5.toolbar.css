@@ -1,13 +1,13 @@
 /* p5.toolbar — shell styles. Auto-injected via <link> by p5.toolbar.js; not meant to be
-   linked directly by students. Everything is scoped under .p5toolbar so nothing leaks
-   into (or is affected by) the student's own page styles. */
+   linked directly by students. Everything else is scoped under .p5toolbar so nothing
+   leaks into (or is affected by) the student's own page styles — the one exception is
+   this custom-property block below, deliberately placed on :root (not .p5toolbar) so
+   that .p5toolbar-grid-readout (a separate document.body child — see the comment further
+   down for why it can't be a descendant of .p5toolbar) can inherit these values for real
+   instead of needing its own local copies. They're inert until referenced by name, so the
+   collision risk with the host page is effectively nil given the --p5toolbar- prefix. */
 
-.p5toolbar,
-.p5toolbar * {
-  box-sizing: border-box;
-}
-
-.p5toolbar {
+:root {
   --p5toolbar-bg: #ffffff;
   --p5toolbar-fg: #1a1a1a;
   --p5toolbar-border: rgba(0, 0, 0, 0.12);
@@ -32,7 +32,23 @@
   --p5toolbar-icon-size: 18px;
   --p5toolbar-font-size-tooltip-label: 12px;
   --p5toolbar-font-size-tooltip-shortcut: 11px;
+}
 
+:root[data-theme="dark"] {
+  --p5toolbar-bg: #1e1e1e;
+  --p5toolbar-fg: #f2f2f2;
+  --p5toolbar-border: rgba(255, 255, 255, 0.2);
+  --p5toolbar-hover: rgba(255, 255, 255, 0.08);
+  --p5toolbar-active: rgba(255, 255, 255, 0.15);
+  --p5toolbar-accent: #60a5fa;
+}
+
+.p5toolbar,
+.p5toolbar * {
+  box-sizing: border-box;
+}
+
+.p5toolbar {
   display: none;
   position: fixed;
   z-index: 2147483647;
@@ -49,15 +65,6 @@
 
 .p5toolbar:not([hidden]) {
   display: flex;
-}
-
-.p5toolbar[data-theme="dark"] {
-  --p5toolbar-bg: #1e1e1e;
-  --p5toolbar-fg: #f2f2f2;
-  --p5toolbar-border: rgba(255, 255, 255, 0.14);
-  --p5toolbar-hover: rgba(255, 255, 255, 0.08);
-  --p5toolbar-active: rgba(255, 255, 255, 0.16);
-  --p5toolbar-accent: #60a5fa;
 }
 
 /* Orientation + edge placement */
@@ -210,4 +217,103 @@
   left: 50%;
   margin-bottom: var(--p5toolbar-space-5);
   transform: translateX(-50%);
+}
+
+/* Grid overlay widget — .p5toolbar-grid and .p5toolbar-grid-readout are independent
+   document.body children, not descendants of .p5toolbar. See the comment beside the
+   "grid" widget in p5.toolbar.js: .p5toolbar's own transform would become their
+   containing block for position:fixed if nested inside it, breaking the canvas-relative
+   math below. --p5toolbar-grid-size is set inline by the JS (GRID_SIZE_PX); the 50px
+   here is only a fallback in case that's ever missing. */
+
+.p5toolbar-grid {
+  position: fixed;
+  pointer-events: none;
+  mix-blend-mode: difference;
+  --p5toolbar-grid-line: #ffffff;
+  /* Line sits at the end of each repeat unit, not the start, so the very first line
+     (at 0) is skipped — the top/left edges start clear rather than flush with a line.
+     The right/bottom edges can't be handled the same way (whether a line lands exactly
+     there depends on the canvas's actual width/height, which is arbitrary), so
+     clip-path below is what actually guarantees no line touches any of the four edges. */
+  background-image: repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(var(--p5toolbar-grid-size, 50px) - 1px),
+      var(--p5toolbar-grid-line) calc(var(--p5toolbar-grid-size, 50px) - 1px),
+      var(--p5toolbar-grid-line) var(--p5toolbar-grid-size, 50px)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(var(--p5toolbar-grid-size, 50px) - 1px),
+      var(--p5toolbar-grid-line) calc(var(--p5toolbar-grid-size, 50px) - 1px),
+      var(--p5toolbar-grid-line) var(--p5toolbar-grid-size, 50px)
+    );
+  /* Lines are 1px thick, so a 1px inset clips away exactly (and only) a line that would
+     otherwise sit flush against an edge, on all four sides, regardless of canvas size. */
+  clip-path: inset(1px);
+}
+.p5toolbar-grid[data-inverted="true"] {
+  /* Mid-gray, not black. For a fixed line color S blended via difference against
+     backdrop B, contrast is a constant S wherever B >= S, dropping to 0 only at
+     B = S/2. White (S=255) is blind at B=127.5 — the case this toggle exists for.
+     Black (S=0) is blind at every B (a no-op, not a working alternate). S=128 keeps
+     strong, ~flat contrast (~128) almost everywhere, with its own single blind spot
+     pushed down to B=64 instead. */
+  --p5toolbar-grid-line: #808080;
+}
+
+.p5toolbar-grid-readout {
+  /* Colors and the spacing scale now come from :root (see the top of this file), so no
+     local redeclaration is needed here despite this not being a descendant of
+     .p5toolbar — that's the whole point of having moved them there. font-size stays a
+     literal, deliberately: this is a glanced-at live readout, not a compact hover
+     tooltip, so it doesn't reuse --p5toolbar-font-size-tooltip-* (sized for tooltips,
+     visibly too small/cramped here when tried). */
+  position: fixed;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--p5toolbar-space-4);
+  padding: var(--p5toolbar-space-1) var(--p5toolbar-space-1) var(--p5toolbar-space-1)
+    var(--p5toolbar-space-4);
+  border: 1px solid var(--p5toolbar-border);
+  border-radius: 999px;
+  background: var(--p5toolbar-bg);
+  color: var(--p5toolbar-fg);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.p5toolbar-grid-readout__coords {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* Inherits font-size from .p5toolbar-grid-readout — no override, same reasoning. */
+}
+.p5toolbar-grid-readout__invert {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--p5toolbar-border);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.p5toolbar-grid-readout__invert svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.p5toolbar-grid-readout__invert:hover {
+  background: var(--p5toolbar-hover);
+}
+.p5toolbar-grid-readout__invert[aria-pressed="true"] {
+  background: var(--p5toolbar-fg);
+  color: var(--p5toolbar-bg);
 }
