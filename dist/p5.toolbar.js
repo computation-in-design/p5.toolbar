@@ -200,7 +200,8 @@
         callback(found);
       }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    // documentElement instead of body — body may not exist yet on some hosts (e.g. Web Editor).
+    observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   function resolveEffectiveTheme() {
