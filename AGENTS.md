@@ -17,10 +17,16 @@ jsDelivr, no npm package, no bundler.
   `document.querySelector('canvas')`. Never require a student's `sketch.js` to pass
   anything into the toolbar.
 - **No `p5.dom`.** Nothing in the toolbar may depend on it — use raw DOM APIs.
-- **Single shipped file, no build step.** The whole library is
-  `dist/p5.toolbar.js`, hand-authored, organized into clearly commented sections (shell,
-  cursor-resolver, storage, then each widget). There is no compile step between the repo
-  and what jsDelivr serves, so what's in `dist/` is exactly what ships.
+- **No build step, single student-facing include.** `dist/p5.toolbar.js` is hand-authored,
+  organized into clearly commented sections (icons, shell, cursor-resolver, storage, then
+  each widget). There is no compile step between the repo and what jsDelivr serves, so
+  what's in `dist/` is exactly what ships. Styles live in the sibling `dist/p5.toolbar.css`
+  for readability, but students never link it themselves — the JS captures
+  `document.currentScript.src` at parse time and auto-injects a `<link>` to the co-located
+  CSS. This only works if the script is included as a plain synchronous
+  `<script src="...">` tag — not dynamically injected, and not `async`/`defer`/
+  `type="module"` — since `document.currentScript` is only reliable during a script's
+  initial synchronous execution.
 - **Widgets register themselves.** Built-in widgets use the same
   `P5Toolbar.registerWidget(name, definition)` call a third-party widget would use —
   nothing is special-cased internally. Third-party widgets can live entirely outside this
@@ -38,7 +44,9 @@ jsDelivr, no npm package, no bundler.
 
 ## Repo layout
 
-- `dist/p5.toolbar.js` — the shipped library (source == shipped file, no build).
+- `dist/p5.toolbar.js`, `dist/p5.toolbar.css` — the shipped library (source == shipped
+  files, no build). Students only ever add a `<script>` tag for the `.js` file; the CSS
+  loads itself.
 - `test/` — a local sandbox shaped like a fresh p5.js Web Editor export, used to preview
   the toolbar during development before tagging a release. Not shipped.
 - No `src/`, no CI config, no test framework — see below.

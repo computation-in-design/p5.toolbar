@@ -1,11 +1,25 @@
-# Dependencies (local dev tooling only — not part of the shipped product)
+# Dependencies
+# (Local dev tooling only, if any. Not to be part of any final shipped product!)
 node_modules/
+
+# Local working files (specs, notes) — not part of the shipped product
+working_files/
 
 # Editors
 .vscode/
 .nova/
 
-# Filesystems
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+
+# Windows
 Thumbs.db
 ehthumbs.db
 desktop.ini

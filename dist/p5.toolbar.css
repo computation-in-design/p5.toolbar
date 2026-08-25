@@ -1,0 +1,192 @@
+/* p5.toolbar — shell styles. Auto-injected via <link> by p5.toolbar.js; not meant to be
+   linked directly by students. Everything is scoped under .p5toolbar so nothing leaks
+   into (or is affected by) the student's own page styles. */
+
+.p5toolbar,
+.p5toolbar * {
+  box-sizing: border-box;
+}
+
+.p5toolbar {
+  --p5toolbar-bg: #ffffff;
+  --p5toolbar-fg: #1a1a1a;
+  --p5toolbar-border: rgba(0, 0, 0, 0.12);
+  --p5toolbar-hover: rgba(0, 0, 0, 0.06);
+  --p5toolbar-active: rgba(0, 0, 0, 0.1);
+  --p5toolbar-accent: #2563eb;
+  /* Read by p5.toolbar.js (getTooltipDelayMs) so the JS "warm" handoff timing can't drift
+     from the actual show-delay below — change it here only, not in the JS. */
+  --p5toolbar-tooltip-delay: 0.7s;
+
+  display: none;
+  position: fixed;
+  z-index: 2147483647;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: var(--p5toolbar-bg);
+  color: var(--p5toolbar-fg);
+  border: 1px solid var(--p5toolbar-border);
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.p5toolbar:not([hidden]) {
+  display: flex;
+}
+
+.p5toolbar[data-theme="dark"] {
+  --p5toolbar-bg: #1e1e1e;
+  --p5toolbar-fg: #f2f2f2;
+  --p5toolbar-border: rgba(255, 255, 255, 0.14);
+  --p5toolbar-hover: rgba(255, 255, 255, 0.08);
+  --p5toolbar-active: rgba(255, 255, 255, 0.16);
+  --p5toolbar-accent: #60a5fa;
+}
+
+/* Orientation + edge placement */
+
+.p5toolbar[data-orientation="vertical"] {
+  flex-direction: column;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.p5toolbar[data-position="left"] {
+  left: 12px;
+}
+.p5toolbar[data-position="right"] {
+  right: 12px;
+}
+
+.p5toolbar[data-orientation="horizontal"] {
+  flex-direction: row;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.p5toolbar[data-position="top"] {
+  top: 12px;
+}
+.p5toolbar[data-position="bottom"] {
+  bottom: 12px;
+}
+
+/* Widget / shell-control groups */
+
+.p5toolbar__widgets,
+.p5toolbar__shell-controls {
+  display: flex;
+  gap: 4px;
+}
+.p5toolbar[data-orientation="vertical"] .p5toolbar__widgets,
+.p5toolbar[data-orientation="vertical"] .p5toolbar__shell-controls {
+  flex-direction: column;
+}
+.p5toolbar[data-orientation="horizontal"] .p5toolbar__widgets,
+.p5toolbar[data-orientation="horizontal"] .p5toolbar__shell-controls {
+  flex-direction: row;
+}
+
+.p5toolbar__divider {
+  flex-shrink: 0;
+  background: var(--p5toolbar-border);
+}
+.p5toolbar[data-orientation="vertical"] .p5toolbar__divider {
+  width: 100%;
+  height: 1px;
+}
+.p5toolbar[data-orientation="horizontal"] .p5toolbar__divider {
+  width: 1px;
+  align-self: stretch;
+}
+
+/* Buttons */
+
+.p5toolbar__btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+}
+.p5toolbar__btn:hover {
+  background: var(--p5toolbar-hover);
+}
+.p5toolbar__btn:focus-visible {
+  outline: 2px solid var(--p5toolbar-accent);
+  outline-offset: 2px;
+}
+.p5toolbar__btn[aria-pressed="true"] {
+  background: var(--p5toolbar-active);
+  color: var(--p5toolbar-accent);
+}
+.p5toolbar__btn svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+/* Tooltips — shown on hover/focus, positioned away from the nearest canvas edge so they
+   don't get clipped by the viewport. aria-label on the button itself covers screen
+   readers regardless of hover/focus state. */
+
+.p5toolbar__btn::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  padding: 4px 8px;
+  border: 1px solid var(--p5toolbar-border);
+  border-radius: 6px;
+  background: var(--p5toolbar-bg);
+  color: var(--p5toolbar-fg);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+.p5toolbar__btn:hover::after,
+.p5toolbar__btn:focus-visible::after {
+  opacity: 1;
+  transition-delay: var(--p5toolbar-tooltip-delay);
+}
+
+/* After the first tooltip in a "session" has shown, later ones (while [data-tooltip-warm]
+   is set by JS) appear instantly — only the very first hover pays the full delay. */
+.p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:hover::after,
+.p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:focus-visible::after {
+  transition-delay: 0s;
+}
+
+.p5toolbar[data-position="left"] .p5toolbar__btn::after {
+  left: 100%;
+  top: 50%;
+  margin-left: 12px;
+  transform: translateY(-50%);
+}
+.p5toolbar[data-position="right"] .p5toolbar__btn::after {
+  right: 100%;
+  top: 50%;
+  margin-right: 12px;
+  transform: translateY(-50%);
+}
+.p5toolbar[data-position="top"] .p5toolbar__btn::after {
+  top: 100%;
+  left: 50%;
+  margin-top: 12px;
+  transform: translateX(-50%);
+}
+.p5toolbar[data-position="bottom"] .p5toolbar__btn::after {
+  bottom: 100%;
+  left: 50%;
+  margin-bottom: 12px;
+  transform: translateX(-50%);
+}
