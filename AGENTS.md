@@ -37,10 +37,47 @@ jsDelivr, no npm package, no bundler.
   Never set `canvas.style.cursor` directly from a widget.
 - **Config lives in `index.html`, never in `sketch.js`** — via the `P5Toolbar.init({...})`
   call, so the file students actually edit stays uncluttered.
-- **`localStorage` keys are namespaced** `p5toolbar:{sketchName}:{key}`, falling back to
-  a global default if no `sketchName` is configured. The Web Editor's preview iframe
-  shares one origin across all sketches, so unnamespaced keys would leak state between
-  unrelated sketches.
+- **`localStorage` namespacing depends on what's being stored.** Widget-authored storage
+  (`ctx.storage`) uses `p5toolbar:{sketchName}:widget:{id}:{key}`, falling back to a
+  global bucket if no `sketchName` is configured — the Web Editor's preview iframe shares
+  one origin across all sketches, so unnamespaced *widget* keys would leak state between
+  unrelated sketches. Shell state (toolbar position, visibility) is the opposite: always
+  global (`storage.get/set(null, ...)`), deliberately *not* namespaced per sketch, since
+  it's a personal preference about the toolbar chrome itself — a student's "I keep it on
+  the right, hidden by default" habit should follow them across every sketch, not reset
+  per project.
+
+## Widget contract
+
+Every widget — built-in or third-party — is a plain object passed to
+`P5Toolbar.registerWidget(id, definition)`:
+
+```js
+{
+  icon: '<svg>...</svg>',              // or { off: '<svg>...</svg>', on: '<svg>...</svg>' }
+  label: 'Hide cursor',                // or { off: '...', on: '...' } — aria-label + tooltip text
+  type: 'toggle' | 'action',           // toggle = stays pressed, action = fires once
+  onToggle(active, ctx) {},            // required for type: 'toggle'
+  onActivate(ctx) {},                  // required for type: 'action'
+  shortcut: { code: 'KeyC', shiftKey: true }, // optional; any of shiftKey/ctrlKey/altKey/metaKey
+}
+```
+
+- `icon`/`label` as a plain string never change; as an `{ off, on }` pair, the shell
+  swaps between them on every toggle (see `resolveStateful()`), so `on` should read as
+  "what will happen if you click again," not just a status label.
+- `ctx` passed to both hooks: `{ canvas, sketchName, setCursor(value), clearCursor(),
+  storage: { get(key, fallback), set(key, value) } }` — `storage` is pre-namespaced to
+  the widget's own key space, no need to build the key yourself.
+- `shortcut` is matched on an **exact** modifier combination (`matchesShortcut()`), not
+  just "is shiftKey down" — so a `Shift+C` shortcut won't also fire on `Cmd/Ctrl+Shift+C`.
+  It only fires for widgets actually included in the active `widgets` config array (bound
+  per-instance in `renderWidget()`, not scanned across the whole registry), and it's
+  wired generically — no shell code is specific to any one widget's shortcut.
+- Only widgets that genuinely need a non-visual way to reach their own toggle should get
+  a `shortcut` (e.g. `hideCursor`: with the cursor hidden, clicking a small button to turn
+  it back on is itself hard to aim). Don't hand out shortcuts by default — they're global
+  and can collide with a student's own `keyPressed()` bindings.
 
 ## Repo layout
 

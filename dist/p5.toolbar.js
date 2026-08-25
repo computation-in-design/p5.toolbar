@@ -6,9 +6,8 @@
 (function () {
   "use strict";
 
-  // Must be read synchronously, at parse time — document.currentScript is only valid
-  // during the initial synchronous execution of this script (see AGENTS.md note on
-  // <script> inclusion requirements).
+  // Must be read synchronously at parse time — document.currentScript is only valid
+  // during a script's initial synchronous run (see AGENTS.md).
   const scriptEl = document.currentScript;
   const scriptSrc = scriptEl ? scriptEl.src : null;
 
@@ -19,7 +18,8 @@
   const LABELS = {
     theme: "Toggle theme",
     position: "Reposition toolbar",
-    hide: "Hide toolbar (Shift + T)",
+    hide: "Hide toolbar",
+    hideCursor: { off: "Hide cursor", on: "Show cursor" },
   };
 
   // ---------------------------------------------------------------------------------
@@ -53,9 +53,21 @@
       "</svg>",
   };
 
-  // Position icon — a rounded-rect frame with one edge's middle third filled, matching
-  // whichever edge the toolbar currently sits on. Swapped by updatePositionButton()
-  // whenever state.position changes.
+  // Both states keep the stroke outline — "on" just adds a fill on top — so the
+  // silhouette's outer edge doesn't shift size when toggling.
+  const CURSOR_ARROW_PATH = "M4.3 4L11 20L13 12.3L19.7 10.2Z";
+  ICONS.cursor = {
+    off: "<svg " + ICON_ATTRS + '><path d="' + CURSOR_ARROW_PATH + '"></path></svg>',
+    on:
+      "<svg " +
+      ICON_ATTRS +
+      '><path d="' +
+      CURSOR_ARROW_PATH +
+      '" fill="currentColor"></path></svg>',
+  };
+
+  // Position icon — rounded-rect frame with one edge's middle third filled, matching the
+  // current edge. Swapped by updatePositionButton().
   ICONS.positions = {
     left:
       "<svg " +
@@ -212,7 +224,8 @@
   }
 
   function updateThemeButton() {
-    els.themeBtn.innerHTML = state.theme === "dark" ? ICONS.sun : ICONS.moon;
+    els.themeBtn.querySelector("svg").outerHTML =
+      state.theme === "dark" ? ICONS.sun : ICONS.moon;
   }
 
   function applyTheme() {
@@ -222,8 +235,7 @@
   }
 
   function toggleTheme() {
-    // Session-only override — deliberately never persisted. Always start from the OS
-    // preference on the next load; a manual toggle should not get "stuck".
+    // Session-only, deliberately never persisted — next load always starts from OS preference.
     state.themeOverridden = true;
     state.theme = state.theme === "dark" ? "light" : "dark";
     els.root.dataset.theme = state.theme;
@@ -242,7 +254,7 @@
   }
 
   function updatePositionButton() {
-    els.positionBtn.innerHTML = ICONS.positions[state.position];
+    els.positionBtn.querySelector("svg").outerHTML = ICONS.positions[state.position];
   }
 
   function setPosition(pos, persist) {
@@ -250,8 +262,10 @@
     els.root.dataset.position = pos;
     els.root.dataset.orientation = ORIENTATION[pos];
     updatePositionButton();
+    resetTooltipWarmState();
     if (persist !== false) {
-      storage.set(state.config.sketchName, "position", pos);
+      // Global, not per-sketch — this is a toolbar chrome preference, not sketch data.
+      storage.set(null, "position", pos);
     }
   }
 
@@ -268,7 +282,7 @@
       els.root.setAttribute("hidden", "");
     }
     if (persist !== false) {
-      storage.set(state.config.sketchName, "visible", visible);
+      storage.set(null, "visible", visible); // global, same reasoning as setPosition above
     }
   }
 
@@ -276,15 +290,58 @@
     setVisible(!state.visible);
   }
 
+  // Shared guard for every keyboard shortcut below — never fire while a student is
+  // typing into their own createInput() field or similar.
+  function isTypingInField() {
+    const active = document.activeElement;
+    const tag = active && active.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || (active && active.isContentEditable);
+  }
+
+  const HIDE_SHORTCUT = { code: "KeyT", shiftKey: true };
+
   function bindShortcut() {
     window.addEventListener("keydown", function (e) {
-      if (!(e.shiftKey && e.code === "KeyT")) return;
-      const active = document.activeElement;
-      const tag = active && active.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || (active && active.isContentEditable))
-        return;
+      if (isTypingInField() || !matchesShortcut(e, HIDE_SHORTCUT)) return;
       toggleVisibility();
     });
+  }
+
+  // Exact modifier match (not just "shiftKey is down"), so e.g. Shift+C won't also fire
+  // on Cmd/Ctrl+Shift+C — which browsers use for devtools inspect-element.
+  function matchesShortcut(e, shortcut) {
+    if (!shortcut || e.code !== shortcut.code) return false;
+    return (
+      e.shiftKey === !!shortcut.shiftKey &&
+      e.ctrlKey === !!shortcut.ctrlKey &&
+      e.altKey === !!shortcut.altKey &&
+      e.metaKey === !!shortcut.metaKey
+    );
+  }
+
+  // Every OS names this key differently — avoid hardcoding "Cmd".
+  function metaKeyLabel() {
+    const info = ((navigator.platform || "") + " " + (navigator.userAgent || "")).toLowerCase();
+    if (info.indexOf("mac") !== -1) return "Cmd";
+    if (info.indexOf("win") !== -1) return "Win";
+    return "Meta";
+  }
+
+  // "KeyC" -> "C" for the compact chip shown in the tooltip and appended to aria-label.
+  function formatShortcut(shortcut) {
+    const parts = [];
+    if (shortcut.metaKey) parts.push(metaKeyLabel());
+    if (shortcut.ctrlKey) parts.push("Ctrl");
+    if (shortcut.altKey) parts.push("Alt");
+    if (shortcut.shiftKey) parts.push("Shift");
+    const code = shortcut.code || "";
+    parts.push(code.indexOf("Key") === 0 ? code.slice(3) : code);
+    return parts.join("+");
+  }
+
+  function accessibleLabel(label, shortcut) {
+    if (!shortcut) return label;
+    return label + " (" + formatShortcut(shortcut) + ")";
   }
 
   // Tooltip warm-state — the first tooltip in a "session" waits out the full CSS
@@ -299,9 +356,20 @@
   function getTooltipDelayMs() {
     const raw = getComputedStyle(els.root).getPropertyValue("--p5toolbar-tooltip-delay");
     const match = /^\s*(-?[\d.]+)(m?s)\s*$/.exec(raw);
-    if (!match) return 700; // stylesheet not loaded yet or property missing — safe fallback
+    if (!match) return 750; // stylesheet not loaded yet or property missing — safe fallback
     const value = parseFloat(match[1]);
     return match[2] === "ms" ? value : value * 1000;
+  }
+
+  // Called whenever the toolbar moves to a new edge (see setPosition) — a warm/cooling
+  // state from the old position shouldn't carry over to the new one.
+  function resetTooltipWarmState() {
+    if (tooltipTimer) {
+      clearTimeout(tooltipTimer);
+      tooltipTimer = null;
+    }
+    tooltipWarm = false;
+    els.root.removeAttribute("data-tooltip-warm");
   }
 
   function onTooltipEnter() {
@@ -332,19 +400,49 @@
     }
   }
 
+  // Shortcut gets its own span (not folded into the label) so it can carry separate
+  // opacity/monospace styling — see .p5toolbar__tooltip-shortcut in the CSS.
+  function buildTooltip(label, shortcut) {
+    const tooltip = document.createElement("span");
+    tooltip.className = "p5toolbar__tooltip";
+
+    const labelEl = document.createElement("span");
+    labelEl.className = "p5toolbar__tooltip-label";
+    labelEl.textContent = label;
+    tooltip.appendChild(labelEl);
+
+    if (shortcut) {
+      const shortcutEl = document.createElement("span");
+      shortcutEl.className = "p5toolbar__tooltip-shortcut";
+      shortcutEl.textContent = formatShortcut(shortcut);
+      tooltip.appendChild(shortcutEl);
+    }
+
+    return tooltip;
+  }
+
   function makeButton(opts) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "p5toolbar__btn";
-    btn.setAttribute("aria-label", opts.label);
-    btn.setAttribute("data-tooltip", opts.label);
+    btn.setAttribute("aria-label", accessibleLabel(opts.label, opts.shortcut));
     btn.innerHTML = opts.icon;
+    btn.appendChild(buildTooltip(opts.label, opts.shortcut));
     btn.addEventListener("click", opts.onClick);
     btn.addEventListener("mouseenter", onTooltipEnter);
     btn.addEventListener("mouseleave", onTooltipLeave);
     btn.addEventListener("focus", onTooltipEnter);
     btn.addEventListener("blur", onTooltipLeave);
     return btn;
+  }
+
+  // Widget icon/label may be a plain string (fixed, e.g. for action-type widgets) or an
+  // { off, on } pair for toggle widgets that reflect their current state.
+  function resolveStateful(value, active) {
+    if (value && typeof value === "object") {
+      return active ? value.on : value.off;
+    }
+    return value;
   }
 
   function renderWidget(id, def) {
@@ -373,12 +471,17 @@
 
     let active = false;
     const btn = makeButton({
-      icon: def.icon,
-      label: def.label,
+      icon: resolveStateful(def.icon, active),
+      label: resolveStateful(def.label, active),
+      shortcut: def.shortcut,
       onClick: function () {
         if (def.type === "toggle") {
           active = !active;
           btn.setAttribute("aria-pressed", String(active));
+          btn.querySelector("svg").outerHTML = resolveStateful(def.icon, active);
+          const label = resolveStateful(def.label, active);
+          btn.setAttribute("aria-label", accessibleLabel(label, def.shortcut));
+          btn.querySelector(".p5toolbar__tooltip-label").textContent = label;
           def.onToggle(active, ctx);
         } else {
           def.onActivate(ctx);
@@ -387,6 +490,12 @@
     });
     if (def.type === "toggle") {
       btn.setAttribute("aria-pressed", "false");
+    }
+    if (def.shortcut) {
+      window.addEventListener("keydown", function (e) {
+        if (isTypingInField() || !matchesShortcut(e, def.shortcut)) return;
+        btn.click();
+      });
     }
     els.widgets.appendChild(btn);
   }
@@ -434,6 +543,7 @@
     const hideBtn = makeButton({
       icon: ICONS.eye,
       label: LABELS.hide,
+      shortcut: HIDE_SHORTCUT,
       onClick: toggleVisibility,
     });
 
@@ -456,6 +566,24 @@
   }
 
   // ---------------------------------------------------------------------------------
+  // Built-in widget: hide cursor — registered the same way a third-party widget would be.
+  // ---------------------------------------------------------------------------------
+
+  registerWidget("hideCursor", {
+    icon: ICONS.cursor,
+    label: LABELS.hideCursor,
+    type: "toggle",
+    shortcut: { code: "KeyC", shiftKey: true },
+    onToggle: function (active, ctx) {
+      if (active) {
+        ctx.setCursor("none");
+      } else {
+        ctx.clearCursor();
+      }
+    },
+  });
+
+  // ---------------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------------
 
@@ -473,11 +601,7 @@
       canvasEl = canvas;
       buildShell();
 
-      const savedPosition = storage.get(
-        state.config.sketchName,
-        "position",
-        state.config.position
-      );
+      const savedPosition = storage.get(null, "position", state.config.position);
       setPosition(
         POSITIONS.indexOf(savedPosition) !== -1 ? savedPosition : state.config.position,
         false
@@ -486,7 +610,7 @@
       applyTheme();
       bindThemeMediaQuery();
 
-      const savedVisible = storage.get(state.config.sketchName, "visible", true);
+      const savedVisible = storage.get(null, "visible", true);
       setVisible(savedVisible, false);
 
       renderWidgets();

@@ -16,18 +16,33 @@
   --p5toolbar-accent: #2563eb;
   /* Read by p5.toolbar.js (getTooltipDelayMs) so the JS "warm" handoff timing can't drift
      from the actual show-delay below — change it here only, not in the JS. */
-  --p5toolbar-tooltip-delay: 0.7s;
+  --p5toolbar-tooltip-delay: 0.75s;
+
+  /* Spacing/size/font-size scale — named so every gap/padding/margin below points at one
+   of these instead of a bare number repeated in five places. Values are hand-picked, not
+   derived from a ratio, so add a new step here rather than reaching for a raw px again. */
+  --p5toolbar-space-1: 4px;
+  --p5toolbar-space-2: 6px;
+  --p5toolbar-space-3: 8px;
+  --p5toolbar-space-4: 10px;
+  --p5toolbar-space-5: 12px;
+  --p5toolbar-radius-sm: 6px;
+  --p5toolbar-radius-lg: 10px;
+  --p5toolbar-btn-size: 32px;
+  --p5toolbar-icon-size: 18px;
+  --p5toolbar-font-size-tooltip-label: 12px;
+  --p5toolbar-font-size-tooltip-shortcut: 11px;
 
   display: none;
   position: fixed;
   z-index: 2147483647;
   align-items: center;
-  gap: 4px;
-  padding: 6px;
+  gap: var(--p5toolbar-space-2);
+  padding: var(--p5toolbar-space-2);
   background: var(--p5toolbar-bg);
   color: var(--p5toolbar-fg);
   border: 1px solid var(--p5toolbar-border);
-  border-radius: 10px;
+  border-radius: var(--p5toolbar-radius-lg);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
@@ -53,10 +68,10 @@
   transform: translateY(-50%);
 }
 .p5toolbar[data-position="left"] {
-  left: 12px;
+  left: var(--p5toolbar-space-5);
 }
 .p5toolbar[data-position="right"] {
-  right: 12px;
+  right: var(--p5toolbar-space-5);
 }
 
 .p5toolbar[data-orientation="horizontal"] {
@@ -65,10 +80,10 @@
   transform: translateX(-50%);
 }
 .p5toolbar[data-position="top"] {
-  top: 12px;
+  top: var(--p5toolbar-space-5);
 }
 .p5toolbar[data-position="bottom"] {
-  bottom: 12px;
+  bottom: var(--p5toolbar-space-5);
 }
 
 /* Widget / shell-control groups */
@@ -76,7 +91,7 @@
 .p5toolbar__widgets,
 .p5toolbar__shell-controls {
   display: flex;
-  gap: 4px;
+  gap: var(--p5toolbar-space-1);
 }
 .p5toolbar[data-orientation="vertical"] .p5toolbar__widgets,
 .p5toolbar[data-orientation="vertical"] .p5toolbar__shell-controls {
@@ -107,11 +122,11 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--p5toolbar-btn-size);
+  height: var(--p5toolbar-btn-size);
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--p5toolbar-radius-sm);
   background: transparent;
   color: currentColor;
   cursor: pointer;
@@ -125,68 +140,74 @@
 }
 .p5toolbar__btn[aria-pressed="true"] {
   background: var(--p5toolbar-active);
-  color: var(--p5toolbar-accent);
 }
 .p5toolbar__btn svg {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: var(--p5toolbar-icon-size);
+  height: var(--p5toolbar-icon-size);
 }
 
 /* Tooltips — shown on hover/focus, positioned away from the nearest canvas edge so they
    don't get clipped by the viewport. aria-label on the button itself covers screen
-   readers regardless of hover/focus state. */
+   readers regardless of hover/focus state; the shortcut chip is purely visual. */
 
-.p5toolbar__btn::after {
-  content: attr(data-tooltip);
+.p5toolbar__tooltip {
   position: absolute;
-  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: var(--p5toolbar-space-4);
+  padding: var(--p5toolbar-space-1) var(--p5toolbar-space-3);
   border: 1px solid var(--p5toolbar-border);
-  border-radius: 6px;
+  border-radius: var(--p5toolbar-radius-sm);
   background: var(--p5toolbar-bg);
   color: var(--p5toolbar-fg);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-  font-size: 12px;
+  font-size: var(--p5toolbar-font-size-tooltip-label);
   line-height: 1.4;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease;
 }
-.p5toolbar__btn:hover::after,
-.p5toolbar__btn:focus-visible::after {
+.p5toolbar__tooltip-shortcut {
+  opacity: 0.55;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: var(--p5toolbar-font-size-tooltip-shortcut);
+}
+.p5toolbar__btn:hover .p5toolbar__tooltip,
+.p5toolbar__btn:focus-visible .p5toolbar__tooltip {
   opacity: 1;
   transition-delay: var(--p5toolbar-tooltip-delay);
 }
 
 /* After the first tooltip in a "session" has shown, later ones (while [data-tooltip-warm]
    is set by JS) appear instantly — only the very first hover pays the full delay. */
-.p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:hover::after,
-.p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:focus-visible::after {
+.p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:hover .p5toolbar__tooltip,
+.p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:focus-visible .p5toolbar__tooltip {
   transition-delay: 0s;
 }
 
-.p5toolbar[data-position="left"] .p5toolbar__btn::after {
+.p5toolbar[data-position="left"] .p5toolbar__tooltip {
   left: 100%;
   top: 50%;
-  margin-left: 12px;
+  margin-left: var(--p5toolbar-space-5);
   transform: translateY(-50%);
 }
-.p5toolbar[data-position="right"] .p5toolbar__btn::after {
+.p5toolbar[data-position="right"] .p5toolbar__tooltip {
   right: 100%;
   top: 50%;
-  margin-right: 12px;
+  margin-right: var(--p5toolbar-space-5);
   transform: translateY(-50%);
 }
-.p5toolbar[data-position="top"] .p5toolbar__btn::after {
+.p5toolbar[data-position="top"] .p5toolbar__tooltip {
   top: 100%;
   left: 50%;
-  margin-top: 12px;
+  margin-top: var(--p5toolbar-space-5);
   transform: translateX(-50%);
 }
-.p5toolbar[data-position="bottom"] .p5toolbar__btn::after {
+.p5toolbar[data-position="bottom"] .p5toolbar__tooltip {
   bottom: 100%;
   left: 50%;
-  margin-bottom: 12px;
+  margin-bottom: var(--p5toolbar-space-5);
   transform: translateX(-50%);
 }
