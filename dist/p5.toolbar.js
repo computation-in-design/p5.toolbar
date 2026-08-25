@@ -9,14 +9,14 @@
   // Must be read synchronously, at parse time — document.currentScript is only valid
   // during the initial synchronous execution of this script (see AGENTS.md note on
   // <script> inclusion requirements).
-  var scriptEl = document.currentScript;
-  var scriptSrc = scriptEl ? scriptEl.src : null;
+  const scriptEl = document.currentScript;
+  const scriptSrc = scriptEl ? scriptEl.src : null;
 
   // ---------------------------------------------------------------------------------
   // Labels — centralized so localization is a find-and-swap later, not a rewrite.
   // ---------------------------------------------------------------------------------
 
-  var LABELS = {
+  const LABELS = {
     theme: "Toggle theme",
     position: "Reposition toolbar",
     hide: "Hide toolbar (Shift + T)",
@@ -27,10 +27,10 @@
   // with no JS-side icon-swap logic.
   // ---------------------------------------------------------------------------------
 
-  var ICON_ATTRS =
+  const ICON_ATTRS =
     'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
 
-  var ICONS = {
+  const ICONS = {
     sun:
       "<svg " +
       ICON_ATTRS +
@@ -93,13 +93,13 @@
   // unnamespaced keys would leak state between unrelated sketches.
   // ---------------------------------------------------------------------------------
 
-  var storage = {
+  const storage = {
     key: function (sketchName, key) {
       return "p5toolbar:" + (sketchName || "default") + ":" + key;
     },
     get: function (sketchName, key, fallback) {
       try {
-        var raw = window.localStorage.getItem(storage.key(sketchName, key));
+        const raw = window.localStorage.getItem(storage.key(sketchName, key));
         return raw === null ? fallback : JSON.parse(raw);
       } catch (e) {
         return fallback;
@@ -119,14 +119,14 @@
   // canvas.style.cursor. Priority: earlier entries win over later ones.
   // ---------------------------------------------------------------------------------
 
-  var CURSOR_PRIORITY = ["none", "crosshair"];
-  var cursorIntents = new Map();
-  var canvasEl = null;
+  const CURSOR_PRIORITY = ["none", "crosshair"];
+  const cursorIntents = new Map();
+  let canvasEl = null;
 
   function applyCursor() {
     if (!canvasEl) return;
-    var active = new Set(cursorIntents.values());
-    for (var i = 0; i < CURSOR_PRIORITY.length; i++) {
+    const active = new Set(cursorIntents.values());
+    for (let i = 0; i < CURSOR_PRIORITY.length; i++) {
       if (active.has(CURSOR_PRIORITY[i])) {
         canvasEl.style.cursor = CURSOR_PRIORITY[i];
         return;
@@ -149,7 +149,7 @@
   // Widget registry
   // ---------------------------------------------------------------------------------
 
-  var registry = {};
+  const registry = {};
 
   function registerWidget(id, definition) {
     registry[id] = definition;
@@ -159,15 +159,15 @@
   // Shell
   // ---------------------------------------------------------------------------------
 
-  var POSITIONS = ["left", "top", "right", "bottom"];
-  var ORIENTATION = {
+  const POSITIONS = ["left", "top", "right", "bottom"];
+  const ORIENTATION = {
     left: "vertical",
     right: "vertical",
     top: "horizontal",
     bottom: "horizontal",
   };
 
-  var state = {
+  const state = {
     config: null,
     position: "left",
     visible: true,
@@ -175,12 +175,12 @@
     themeOverridden: false,
   };
 
-  var els = {};
+  const els = {};
 
   function injectStylesheet() {
     if (document.getElementById("p5toolbar-styles")) return;
-    var href = scriptSrc ? new URL("p5.toolbar.css", scriptSrc).href : "p5.toolbar.css";
-    var link = document.createElement("link");
+    const href = scriptSrc ? new URL("p5.toolbar.css", scriptSrc).href : "p5.toolbar.css";
+    const link = document.createElement("link");
     link.id = "p5toolbar-styles";
     link.rel = "stylesheet";
     link.href = href;
@@ -188,13 +188,13 @@
   }
 
   function waitForCanvas(callback) {
-    var existing = document.querySelector("canvas");
+    const existing = document.querySelector("canvas");
     if (existing) {
       callback(existing);
       return;
     }
-    var observer = new MutationObserver(function () {
-      var found = document.querySelector("canvas");
+    const observer = new MutationObserver(function () {
+      const found = document.querySelector("canvas");
       if (found) {
         observer.disconnect();
         callback(found);
@@ -231,8 +231,8 @@
 
   function bindThemeMediaQuery() {
     if (!window.matchMedia) return;
-    var mq = window.matchMedia("(prefers-color-scheme: dark)");
-    var handler = function () {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = function () {
       if (state.themeOverridden) return;
       applyTheme();
     };
@@ -255,7 +255,7 @@
   }
 
   function cyclePosition() {
-    var idx = POSITIONS.indexOf(state.position);
+    const idx = POSITIONS.indexOf(state.position);
     setPosition(POSITIONS[(idx + 1) % POSITIONS.length]);
   }
 
@@ -278,8 +278,8 @@
   function bindShortcut() {
     window.addEventListener("keydown", function (e) {
       if (!(e.shiftKey && e.code === "KeyT")) return;
-      var active = document.activeElement;
-      var tag = active && active.tagName;
+      const active = document.activeElement;
+      const tag = active && active.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || (active && active.isContentEditable))
         return;
       toggleVisibility();
@@ -288,11 +288,20 @@
 
   // Tooltip warm-state — the first tooltip in a "session" waits out the full CSS
   // show-delay (see p5.toolbar.css), but moving directly to another button shortly
-  // after should feel instant, like most native tooltip groups. Keep TOOLTIP_DELAY_MS
-  // in sync with the transition-delay value on .p5toolbar__btn:hover::after in the CSS.
-  var TOOLTIP_DELAY_MS = 700;
-  var tooltipWarm = false;
-  var tooltipTimer = null;
+  // after should feel instant, like most native tooltip groups.
+  let tooltipWarm = false;
+  let tooltipTimer = null;
+
+  // Reads --p5toolbar-tooltip-delay from the CSS rather than hardcoding a duplicate
+  // number here, so the "warm" handoff timing can never drift out of sync with the
+  // actual show-delay — change the delay in p5.toolbar.css only.
+  function getTooltipDelayMs() {
+    const raw = getComputedStyle(els.root).getPropertyValue("--p5toolbar-tooltip-delay");
+    const match = /^\s*(-?[\d.]+)(m?s)\s*$/.exec(raw);
+    if (!match) return 700; // stylesheet not loaded yet or property missing — safe fallback
+    const value = parseFloat(match[1]);
+    return match[2] === "ms" ? value : value * 1000;
+  }
 
   function onTooltipEnter() {
     if (tooltipTimer) {
@@ -304,7 +313,7 @@
         tooltipWarm = true;
         els.root.setAttribute("data-tooltip-warm", "true");
         tooltipTimer = null;
-      }, TOOLTIP_DELAY_MS);
+      }, getTooltipDelayMs());
     }
   }
 
@@ -318,12 +327,12 @@
         tooltipWarm = false;
         els.root.removeAttribute("data-tooltip-warm");
         tooltipTimer = null;
-      }, TOOLTIP_DELAY_MS);
+      }, getTooltipDelayMs());
     }
   }
 
   function makeButton(opts) {
-    var btn = document.createElement("button");
+    const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "p5toolbar__btn";
     btn.setAttribute("aria-label", opts.label);
@@ -338,7 +347,7 @@
   }
 
   function renderWidget(id, def) {
-    var ctx = {
+    const ctx = {
       canvas: canvasEl,
       sketchName: state.config.sketchName,
       setCursor: function (value) {
@@ -361,8 +370,8 @@
       },
     };
 
-    var active = false;
-    var btn = makeButton({
+    let active = false;
+    const btn = makeButton({
       icon: def.icon,
       label: def.label,
       onClick: function () {
@@ -384,7 +393,7 @@
   function renderWidgets() {
     els.widgets.innerHTML = "";
     (state.config.widgets || []).forEach(function (name) {
-      var def = registry[name];
+      const def = registry[name];
       if (!def) {
         console.warn(
           '[p5.toolbar] Widget "' +
@@ -399,29 +408,29 @@
   }
 
   function buildShell() {
-    var root = document.createElement("div");
+    const root = document.createElement("div");
     root.className = "p5toolbar";
 
-    var widgets = document.createElement("div");
+    const widgets = document.createElement("div");
     widgets.className = "p5toolbar__widgets";
 
-    var divider = document.createElement("div");
+    const divider = document.createElement("div");
     divider.className = "p5toolbar__divider";
 
-    var shellControls = document.createElement("div");
+    const shellControls = document.createElement("div");
     shellControls.className = "p5toolbar__shell-controls";
 
-    var themeBtn = makeButton({
+    const themeBtn = makeButton({
       icon: ICONS.moon,
       label: LABELS.theme,
       onClick: toggleTheme,
     });
-    var positionBtn = makeButton({
+    const positionBtn = makeButton({
       icon: ICONS.positions[state.position],
       label: LABELS.position,
       onClick: cyclePosition,
     });
-    var hideBtn = makeButton({
+    const hideBtn = makeButton({
       icon: ICONS.eye,
       label: LABELS.hide,
       onClick: toggleVisibility,
@@ -463,7 +472,7 @@
       canvasEl = canvas;
       buildShell();
 
-      var savedPosition = storage.get(
+      const savedPosition = storage.get(
         state.config.sketchName,
         "position",
         state.config.position
@@ -476,7 +485,7 @@
       applyTheme();
       bindThemeMediaQuery();
 
-      var savedVisible = storage.get(state.config.sketchName, "visible", true);
+      const savedVisible = storage.get(state.config.sketchName, "visible", true);
       setVisible(savedVisible, false);
 
       renderWidgets();
