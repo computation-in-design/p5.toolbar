@@ -373,7 +373,11 @@
 
   // Every OS names this key differently — avoid hardcoding "Cmd".
   function metaKeyLabel() {
-    const info = ((navigator.platform || "") + " " + (navigator.userAgent || "")).toLowerCase();
+    const info = (
+      (navigator.platform || "") +
+      " " +
+      (navigator.userAgent || "")
+    ).toLowerCase();
     if (info.indexOf("mac") !== -1) return "Cmd";
     if (info.indexOf("win") !== -1) return "Win";
     return "Meta";
@@ -671,7 +675,8 @@
 
   function gridFrameLoop() {
     if (!gridCoordsEl) return;
-    gridCoordsEl.textContent = Math.round(window.mouseX) + ", " + Math.round(window.mouseY);
+    gridCoordsEl.textContent =
+      Math.round(window.mouseX) + ", " + Math.round(window.mouseY);
     gridRafId = requestAnimationFrame(gridFrameLoop);
   }
 
@@ -760,7 +765,8 @@
     config = config || {};
     state.config = {
       position: config.position || "left",
-      widgets: config.widgets || ["grid", "hideCursor", "saveCanvas", "fullscreen"],
+      widgets: config.widgets || ["grid", "hideCursor"],
+      // widgets: config.widgets || ["grid", "hideCursor", "saveCanvas", "fullscreen"],
       sketchName: config.sketchName || null,
     };
 

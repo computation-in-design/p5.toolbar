@@ -290,7 +290,6 @@
 }
 .p5toolbar-grid-readout__coords {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  /* Inherits font-size from .p5toolbar-grid-readout — no override, same reasoning. */
 }
 .p5toolbar-grid-readout__invert {
   display: inline-flex;
