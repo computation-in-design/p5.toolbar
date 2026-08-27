@@ -72,6 +72,7 @@ Every widget — built-in or third-party — is a plain object passed to
   icon: '<svg>...</svg>',              // or { off: '<svg>...</svg>', on: '<svg>...</svg>' }
   label: 'Hide cursor',                // or { off: '...', on: '...' } — aria-label + tooltip text
   type: 'toggle' | 'action',           // toggle = stays pressed, action = fires once
+  persist: true,                       // optional, toggle only — remember on/off per sketch
   onToggle(active, ctx) {},            // required for type: 'toggle'
   onActivate(ctx) {},                  // required for type: 'action'
   shortcut: { code: 'KeyC', shiftKey: true }, // optional; any of shiftKey/ctrlKey/altKey/metaKey
@@ -81,6 +82,12 @@ Every widget — built-in or third-party — is a plain object passed to
 - `icon`/`label` as a plain string never change; as an `{ off, on }` pair, the shell
   swaps between them on every toggle (see `resolveStateful()`), so `on` should read as
   "what will happen if you click again," not just a status label.
+- `persist: true` (toggle widgets only) makes the shell store the on/off state under
+  `ctx.storage` and, on the next load, render the button pressed and replay `onToggle`
+  as if the student had clicked it. Any other state the widget wants remembered (the
+  grid's contrast toggle, say) is on the widget to save/restore through `ctx.storage`
+  itself. Per-sketch, so it follows `sketchName` — without one, all Web Editor sketches
+  share a bucket (see the `localStorage` note above).
 - `ctx` passed to both hooks: `{ canvas, sketchName, setCursor(value), clearCursor(),
   storage: { get(key, fallback), set(key, value) } }` — `storage` is pre-namespaced to
   the widget's own key space, no need to build the key yourself.
@@ -110,8 +117,11 @@ Every widget — built-in or third-party — is a plain object passed to
   contributor volume makes manual review genuinely painful.
 - **No automated tests.** Verify changes manually — `test/` locally during development,
   the real Web Editor before release. Don't introduce a test framework speculatively.
-- **Versioning is manual.** Tag a commit when a release is ready; jsDelivr serves from
-  the GitHub tag. No release automation.
+- **Versioning is manual, via `scripts/release.sh <version>`.** It bumps the version
+  header in `dist/p5.toolbar.js`, commits, and tags in one step — run it rather than
+  editing the header and tagging separately, so the two can't drift apart. jsDelivr
+  serves from the GitHub tag; the script doesn't push, so `git push && git push --tags`
+  is still a separate, deliberate step. No CI, no other release automation.
 - Keep the tooling minimal generally — this is solo-maintained vanilla JS and isn't
   expected to grow large. Don't add a bundler, TypeScript, or a package manager dependency
   without a real, current reason.

@@ -1,11 +1,9 @@
-/* p5.toolbar — shell styles. Auto-injected via <link> by p5.toolbar.js; not meant to be
-   linked directly by students. Everything else is scoped under .p5toolbar so nothing
-   leaks into (or is affected by) the student's own page styles — the one exception is
-   this custom-property block below, deliberately placed on :root (not .p5toolbar) so
-   that .p5toolbar-grid-readout (a separate document.body child — see the comment further
-   down for why it can't be a descendant of .p5toolbar) can inherit these values for real
-   instead of needing its own local copies. They're inert until referenced by name, so the
-   collision risk with the host page is effectively nil given the --p5toolbar- prefix. */
+/* p5.toolbar — shell styles. Auto-injected via <link> by p5.toolbar.js; students never
+   link it directly. Scoped under .p5toolbar, with one exception: the custom-property
+   block below lives on :root, not .p5toolbar, so .p5toolbar-grid-readout (a separate
+   document.body child — see the comment near .p5toolbar-grid for why) can inherit these
+   values directly. They're inert until referenced by name, so the --p5toolbar- prefix
+   keeps collision risk with the host page effectively nil. */
 
 :root {
   --p5toolbar-bg: #ffffff;
@@ -220,22 +218,19 @@
 }
 
 /* Grid overlay widget — .p5toolbar-grid and .p5toolbar-grid-readout are independent
-   document.body children, not descendants of .p5toolbar. See the comment beside the
-   "grid" widget in p5.toolbar.js: .p5toolbar's own transform would become their
-   containing block for position:fixed if nested inside it, breaking the canvas-relative
-   math below. --p5toolbar-grid-size is set inline by the JS (GRID_SIZE_PX); the 50px
-   here is only a fallback in case that's ever missing. */
+   document.body children, not descendants of .p5toolbar (see the comment beside the
+   "grid" widget in p5.toolbar.js for why). --p5toolbar-grid-size is set inline by the
+   JS; the 50px here is just a fallback if that's ever missing. */
 
 .p5toolbar-grid {
   position: fixed;
   pointer-events: none;
   mix-blend-mode: difference;
   --p5toolbar-grid-line: #ffffff;
-  /* Line sits at the end of each repeat unit, not the start, so the very first line
-     (at 0) is skipped — the top/left edges start clear rather than flush with a line.
-     The right/bottom edges can't be handled the same way (whether a line lands exactly
-     there depends on the canvas's actual width/height, which is arbitrary), so
-     clip-path below is what actually guarantees no line touches any of the four edges. */
+  /* The line sits at the end of each repeat unit, not the start, so no line lands at 0
+     and the top/left edges stay clear. Right/bottom depend on the canvas's actual
+     width/height, which is arbitrary, so clip-path below is what actually guarantees
+     no line touches any of the four edges. */
   background-image: repeating-linear-gradient(
       to right,
       transparent 0,
@@ -253,24 +248,23 @@
   /* Lines are 1px thick, so a 1px inset clips away exactly (and only) a line that would
      otherwise sit flush against an edge, on all four sides, regardless of canvas size. */
   clip-path: inset(1px);
+  opacity: 0.65;
 }
 .p5toolbar-grid[data-inverted="true"] {
-  /* Mid-gray, not black. For a fixed line color S blended via difference against
-     backdrop B, contrast is a constant S wherever B >= S, dropping to 0 only at
-     B = S/2. White (S=255) is blind at B=127.5 — the case this toggle exists for.
-     Black (S=0) is blind at every B (a no-op, not a working alternate). S=128 keeps
-     strong, ~flat contrast (~128) almost everywhere, with its own single blind spot
-     pushed down to B=64 instead. */
+  /* Mid-gray, not black — for a fixed line color S blended via difference, contrast is
+     a constant S wherever the backdrop >= S, dropping to 0 only at backdrop = S/2.
+     White (S=255) is blind at ~127.5, the case this toggle exists for; black (S=0) is
+     blind everywhere (a no-op). S=128 keeps strong, ~flat contrast almost everywhere,
+     with its blind spot pushed down to ~64 instead. */
   --p5toolbar-grid-line: #808080;
 }
 
 .p5toolbar-grid-readout {
-  /* Colors and the spacing scale now come from :root (see the top of this file), so no
-     local redeclaration is needed here despite this not being a descendant of
-     .p5toolbar — that's the whole point of having moved them there. font-size stays a
-     literal, deliberately: this is a glanced-at live readout, not a compact hover
-     tooltip, so it doesn't reuse --p5toolbar-font-size-tooltip-* (sized for tooltips,
-     visibly too small/cramped here when tried). */
+  /* Colors and the spacing scale come from :root (see the top of this file) — this
+     isn't a descendant of .p5toolbar, but inherits them anyway since they're defined
+     that high up. font-size is a literal on purpose: this is a glanced-at live readout,
+     not a compact hover tooltip, so it doesn't reuse --p5toolbar-font-size-tooltip-*
+     (sized for tooltips, not a readout this size). */
   position: fixed;
   transform: translate(-50%, -50%);
   z-index: 1;

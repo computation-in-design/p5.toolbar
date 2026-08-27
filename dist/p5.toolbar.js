@@ -1,5 +1,5 @@
 /*!
- * p5.toolbar — v0 (shell)
+ * p5.toolbar — v0.3.1
  * A floating toolbar addon for p5.js global-mode sketches. See AGENTS.md for the
  * conventions this file follows (global-mode access, single-file, cursor-resolver, etc).
  */
@@ -67,12 +67,8 @@
       '" fill="currentColor"></path></svg>',
   };
 
-  // Grid icon — rounded-rect frame + a full-bleed plus sign, both stroked, no fill. On:
-  // the frame keeps its stroke (so the outer edge doesn't shift size — same reasoning as
-  // the cursor icon above) and adds a currentColor fill; the plus switches to
-  // var(--p5toolbar-bg) — already in scope, since the icon always renders inside
-  // .p5toolbar — with a square cap (overriding ICON_ATTRS's round default), so it reads
-  // as a clean cutout through the filled square rather than a stroke drawn on top of it.
+  // "On" adds a currentColor fill to the frame (stroke stays, so the edge doesn't
+  // resize) and recolors the plus to var(--p5toolbar-bg), reading as a cutout.
   const GRID_FRAME_PATH = '<rect x="3" y="3" width="18" height="18" rx="3"';
   ICONS.grid = {
     off:
@@ -93,9 +89,7 @@
       "</svg>",
   };
 
-  // Invert icon (grid readout's contrast toggle) — outlined circle, left half filled
-  // solid. Standard "invert/contrast" glyph; the semicircle is one arc command closed by
-  // a straight line down the vertical diameter, so no separate half-circle path data.
+  // Outlined circle, left half filled — one arc closed by the vertical diameter.
   ICONS.invert =
     "<svg " +
     ICON_ATTRS +
@@ -166,9 +160,9 @@
 
   // ---------------------------------------------------------------------------------
   // Cursor-state resolver — widgets declare intent, this is the only code that writes
-  // canvas.style.cursor. Priority: earlier entries win over later ones (kept as a
-  // fallback even though setCursorIntent's mutual exclusion below means at most one
-  // intent is normally registered at a time).
+  // canvas.style.cursor. Priority: earlier entries win over later ones — a fallback for
+  // the rare case multiple intents are registered at once; setCursorIntent below
+  // normally prevents that.
   // ---------------------------------------------------------------------------------
 
   const CURSOR_PRIORITY = ["none", "crosshair"];
@@ -279,9 +273,9 @@
 
   function applyTheme() {
     state.theme = resolveEffectiveTheme();
-    // On <html>, not .p5toolbar — the theme custom properties live on :root now (see
-    // p5.toolbar.css), so every themed element (including .p5toolbar-grid-readout,
-    // which can't inherit from .p5toolbar itself) picks this up automatically.
+    // On <html>, not .p5toolbar — the theme custom properties live on :root (see
+    // p5.toolbar.css), so every themed element, including .p5toolbar-grid-readout
+    // (not a descendant of .p5toolbar), picks this up through normal inheritance.
     document.documentElement.dataset.theme = state.theme;
     updateThemeButton();
   }
@@ -525,7 +519,11 @@
       },
     };
 
-    let active = false;
+    // Toggle widgets with persist:true remember their on/off state per sketch (via
+    // ctx.storage). A restored "on" state is applied below, after the button is in the
+    // DOM, by running onToggle the same way a click would.
+    const persist = def.type === "toggle" && def.persist === true;
+    let active = persist && !!ctx.storage.get("active", false);
     const btn = makeButton({
       icon: resolveStateful(def.icon, active),
       label: resolveStateful(def.label, active),
@@ -538,6 +536,7 @@
           const label = resolveStateful(def.label, active);
           btn.setAttribute("aria-label", accessibleLabel(label, def.shortcut));
           btn.querySelector(".p5toolbar__tooltip-label").textContent = label;
+          if (persist) ctx.storage.set("active", active);
           def.onToggle(active, ctx);
         } else {
           def.onActivate(ctx);
@@ -545,7 +544,7 @@
       },
     });
     if (def.type === "toggle") {
-      btn.setAttribute("aria-pressed", "false");
+      btn.setAttribute("aria-pressed", String(active));
     }
     if (def.shortcut) {
       window.addEventListener("keydown", function (e) {
@@ -555,6 +554,13 @@
     }
     widgetButtons[id] = btn;
     els.widgets.appendChild(btn);
+
+    // Replay a persisted "on" state. Safe to run inline: widgets render in config
+    // order, so any earlier widget this one's setCursor would need to click off is
+    // already built, and later ones haven't registered a cursor intent yet.
+    if (active) {
+      def.onToggle(true, ctx);
+    }
   }
 
   function renderWidgets() {
@@ -641,24 +647,23 @@
   });
 
   // ---------------------------------------------------------------------------------
-  // Built-in widget: grid overlay — registered the same way as hideCursor above; also
-  // sets cursor intent via ctx.setCursor(), so setCursorIntent's mutual exclusion applies.
+  // Built-in widget: grid overlay.
   //
-  // .p5toolbar-grid and .p5toolbar-grid-readout are siblings of .p5toolbar under
-  // document.body, not descendants — .p5toolbar has a transform (for its own edge
-  // centering), and per the CSS spec a transformed ancestor becomes the containing block
-  // for position:fixed descendants at any depth, which would silently break the
-  // canvas-relative positioning here. .p5toolbar's own huge z-index still renders it
-  // above both regardless of DOM order, so neither new element needs its own z-index.
+  // .p5toolbar-grid and .p5toolbar-grid-readout are document.body children, not
+  // descendants of .p5toolbar — .p5toolbar's own transform makes it the containing
+  // block for position:fixed descendants at any depth, which would break their
+  // canvas-relative positioning. .p5toolbar's z-index still renders it above both
+  // regardless of DOM order, so neither element needs its own.
   // ---------------------------------------------------------------------------------
 
-  const GRID_SIZE_PX = 50; // not exposed via config for v0
+  const GRID_SIZE_PX = 50; // not configurable
 
   let gridOverlayEl = null;
   let gridReadoutEl = null;
   let gridCoordsEl = null;
   let gridRafId = null;
   let gridInverted = false;
+  let gridCtx = null; // set while the grid is on, so toggleGridInvert can persist
   let gridResizeObserver = null;
   let gridResizeHandler = null;
 
@@ -680,13 +685,12 @@
     gridRafId = requestAnimationFrame(gridFrameLoop);
   }
 
-  // Manual escape hatch for mix-blend-mode:difference's weak spot: against a background
-  // near mid-gray (128,128,128), |255-128| and |0-128| are both close to 128, so neither
-  // white nor black lines get strong contrast there. Not a full fix — just gives whichever
-  // of the two happens to contrast better a chance to work.
+  // Manual escape hatch for mix-blend-mode:difference's contrast blind spot near
+  // mid-gray backgrounds — see the color choice in p5.toolbar.css for the math.
   function toggleGridInvert() {
     gridInverted = !gridInverted;
     gridOverlayEl.dataset.inverted = String(gridInverted);
+    if (gridCtx) gridCtx.storage.set("inverted", gridInverted);
     gridReadoutEl
       .querySelector(".p5toolbar-grid-readout__invert")
       .setAttribute("aria-pressed", String(gridInverted));
@@ -696,10 +700,14 @@
     icon: ICONS.grid,
     label: LABELS.grid,
     type: "toggle",
+    persist: true,
     shortcut: { code: "KeyG", shiftKey: true },
     onToggle: function (active, ctx) {
       if (active) {
         ctx.setCursor("crosshair");
+
+        gridCtx = ctx;
+        gridInverted = !!ctx.storage.get("inverted", false);
 
         gridOverlayEl = document.createElement("div");
         gridOverlayEl.className = "p5toolbar-grid";
@@ -753,6 +761,7 @@
         gridOverlayEl = null;
         gridReadoutEl = null;
         gridCoordsEl = null;
+        gridCtx = null;
       }
     },
   });
@@ -766,7 +775,6 @@
     state.config = {
       position: config.position || "left",
       widgets: config.widgets || ["grid", "hideCursor"],
-      // widgets: config.widgets || ["grid", "hideCursor", "saveCanvas", "fullscreen"],
       sketchName: config.sketchName || null,
     };
 
