@@ -119,9 +119,11 @@ Every widget — built-in or third-party — is a plain object passed to
   the real Web Editor before release. Don't introduce a test framework speculatively.
 - **Versioning is manual, via `scripts/release.sh <version>`.** It bumps the version
   header in `dist/p5.toolbar.js`, commits, and tags in one step — run it rather than
-  editing the header and tagging separately, so the two can't drift apart. jsDelivr
-  serves from the GitHub tag; the script doesn't push, so `git push && git push --tags`
-  is still a separate, deliberate step. No CI, no other release automation.
+  editing the header and tagging separately, so the two can't drift apart. It also
+  refuses a version that isn't newer than the latest tag. jsDelivr serves from the
+  GitHub tag; the script doesn't push (that stays deliberate), but the tag is annotated
+  and it enables `push.followTags`, so the next plain `git push` carries the tag — no
+  separate `git push --tags`. No CI, no other release automation.
 - Keep the tooling minimal generally — this is solo-maintained vanilla JS and isn't
   expected to grow large. Don't add a bundler, TypeScript, or a package manager dependency
   without a real, current reason.
