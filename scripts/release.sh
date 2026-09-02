@@ -50,8 +50,10 @@ if [ "$(git config --get push.followTags || true)" != "true" ]; then
   git config push.followTags true
 fi
 
-git add dist/p5.toolbar.js
-git commit -m "Release v${VERSION}"
+# Commit only the version bump, straight from the working tree — a pathspec on
+# `git commit` ignores the rest of the index, so anything else you have staged stays
+# staged and out of the release commit (and therefore out of the tag).
+git commit -m "Release v${VERSION}" -- dist/p5.toolbar.js
 git tag -a "v${VERSION}" -m "Release v${VERSION}"
 
 echo "Tagged v${VERSION}. Run 'git push' to publish (the tag rides along)."
