@@ -1,7 +1,16 @@
+let bg;
+
 function setup() {
-  createCanvas(400, 400);
+  createCanvas(800, 800);
+  bg = color(220);
 }
 
 function draw() {
-  background(220);
+  background(bg);
+
+  if (mouseIsPressed) {
+    bg = color(255, 255, 0);
+  } else {
+    bg = color(220);
+  }
 }

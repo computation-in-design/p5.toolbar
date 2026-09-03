@@ -9,7 +9,7 @@
   --p5toolbar-bg: #ffffff;
   --p5toolbar-fg: #1a1a1a;
   --p5toolbar-border: rgba(0, 0, 0, 0.12);
-  --p5toolbar-hover: rgba(0, 0, 0, 0.06);
+  --p5toolbar-hover: rgba(0, 0, 0, 0.07);
   --p5toolbar-active: rgba(0, 0, 0, 0.1);
   --p5toolbar-accent: #2563eb;
   /* Read by p5.toolbar.js (getTooltipDelayMs) so the JS "warm" handoff timing can't drift

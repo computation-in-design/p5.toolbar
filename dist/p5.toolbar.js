@@ -336,6 +336,54 @@
     setVisible(!state.visible);
   }
 
+  // Keep pointer/click/scroll events that land on our own UI from also reaching the
+  // sketch. p5 registers its input listeners on `window` in the bubble phase (the
+  // pointer-event set in 2.x, the mouse/touch set in 1.x), so without this a click on
+  // a toolbar sitting over the canvas also fires the sketch's mousePressed(),
+  // mouseClicked(), mouseWheel(), touchStarted(), etc.
+  //
+  // A release is passed through when its press started somewhere else (i.e. the
+  // canvas): the capture-phase listeners below clear the flag before any target
+  // handler runs, and containSketchEvents() sets it again only for a press that
+  // actually hit our UI — so a drag begun on the canvas and finished over the toolbar
+  // still delivers its release to p5 and the sketch's drag state doesn't stick.
+  const PRESS_EVENTS = ["pointerdown", "mousedown", "touchstart"];
+  const RELEASE_EVENTS = ["pointerup", "mouseup", "touchend"];
+  let pressStartedInUI = false;
+  let uiPressTrackingInstalled = false;
+
+  function containSketchEvents(el) {
+    if (!uiPressTrackingInstalled) {
+      uiPressTrackingInstalled = true;
+      PRESS_EVENTS.forEach(function (type) {
+        document.addEventListener(
+          type,
+          function () {
+            pressStartedInUI = false;
+          },
+          true
+        );
+      });
+    }
+
+    PRESS_EVENTS.forEach(function (type) {
+      el.addEventListener(type, function (e) {
+        pressStartedInUI = true;
+        e.stopPropagation();
+      });
+    });
+    RELEASE_EVENTS.forEach(function (type) {
+      el.addEventListener(type, function (e) {
+        if (pressStartedInUI) e.stopPropagation();
+      });
+    });
+    ["click", "dblclick", "wheel"].forEach(function (type) {
+      el.addEventListener(type, function (e) {
+        e.stopPropagation();
+      });
+    });
+  }
+
   // Shared guard for every keyboard shortcut below — never fire while a student is
   // typing into their own createInput() field or similar.
   function isTypingInField() {
@@ -619,6 +667,7 @@
     root.appendChild(shellControls);
 
     document.body.appendChild(root);
+    containSketchEvents(root);
 
     els.root = root;
     els.widgets = widgets;
@@ -691,9 +740,10 @@
     gridInverted = !gridInverted;
     gridOverlayEl.dataset.inverted = String(gridInverted);
     if (gridCtx) gridCtx.storage.set("inverted", gridInverted);
-    gridReadoutEl
-      .querySelector(".p5toolbar-grid-readout__invert")
-      .setAttribute("aria-pressed", String(gridInverted));
+    const btn = gridReadoutEl.querySelector(".p5toolbar-grid-readout__invert");
+    btn.setAttribute("aria-pressed", String(gridInverted));
+    // Half-turn the icon so its filled half swaps sides, matching the toggle state.
+    btn.querySelector("svg").style.transform = gridInverted ? "rotate(180deg)" : "";
   }
 
   registerWidget("grid", {
@@ -727,11 +777,17 @@
         invertBtn.setAttribute("aria-pressed", String(gridInverted));
         invertBtn.setAttribute("aria-label", "Invert grid line color");
         invertBtn.innerHTML = ICONS.invert;
+        if (gridInverted) {
+          invertBtn.querySelector("svg").style.transform = "rotate(180deg)";
+        }
         invertBtn.addEventListener("click", toggleGridInvert);
         gridReadoutEl.appendChild(invertBtn);
 
         document.body.appendChild(gridOverlayEl);
         document.body.appendChild(gridReadoutEl);
+        // The overlay itself is pointer-events:none, so only the readout can take a
+        // click that would otherwise fall through to the sketch.
+        containSketchEvents(gridReadoutEl);
 
         syncGridRect();
         gridResizeHandler = syncGridRect;

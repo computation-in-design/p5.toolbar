@@ -50,6 +50,15 @@ jsDelivr, no npm package, no bundler.
   (`CURSOR_PRIORITY`) still resolves the final `canvas.style.cursor` value from whatever
   ends up registered, as a fallback — in practice that's normally at most one entry.
   Never set `canvas.style.cursor` directly from a widget.
+- **The toolbar's own UI swallows the pointer events it handles**, so a click/scroll on
+  a toolbar sitting over the canvas doesn't also fire the sketch's `mousePressed()`,
+  `mouseClicked()`, `mouseWheel()`, `touchStarted()`, etc. p5 listens on `window` in the
+  bubble phase, so `containSketchEvents(el)` stops propagation of `pointer`/`mouse`/
+  `touch` press, release, `click`, `dblclick` and `wheel` events at each of our
+  container elements (the shell root and the grid readout — the grid overlay is
+  `pointer-events: none`). A release is let through when its press started off our UI,
+  so a drag begun on the canvas and released over the toolbar still completes in the
+  sketch. Move events are not swallowed — `mouseX`/`mouseY` still track over the toolbar.
 - **Config lives in `index.html`, never in `sketch.js`** — via the `P5Toolbar.init({...})`
   call, so the file students actually edit stays uncluttered.
 - **`localStorage` namespacing depends on what's being stored.** Widget-authored storage
