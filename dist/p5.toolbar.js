@@ -24,6 +24,33 @@
   };
 
   // ---------------------------------------------------------------------------------
+  // Console — the library stays quiet in normal use. It speaks only for a real
+  // problem: error() when the toolbar can't run at all, warn() when something the
+  // caller passed is being ignored. info() is for deliberate, friendly notices.
+  // localStorage and stylesheet failures degrade silently by default — not a
+  // student's problem to fix, and a red console line would just alarm them; pass
+  // init({ friendly: false }) to have debug() surface them too.
+  // ---------------------------------------------------------------------------------
+
+  const log = {
+    info: function (msg) {
+      console.info("[p5.toolbar] " + msg);
+    },
+    warn: function (msg) {
+      console.warn("[p5.toolbar] " + msg);
+    },
+    error: function (msg) {
+      console.error("[p5.toolbar] " + msg);
+    },
+    debug: function (msg) {
+      // Silent unless the caller opted out of friendly mode.
+      if (state.config && state.config.friendly === false) {
+        console.info("[p5.toolbar] " + msg);
+      }
+    },
+  };
+
+  // ---------------------------------------------------------------------------------
   // Icons — inline SVG strings (not sprite/<img>) so stroke: currentColor tracks theme
   // with no JS-side icon-swap logic.
   // ---------------------------------------------------------------------------------
@@ -138,6 +165,9 @@
   // ---------------------------------------------------------------------------------
 
   const storage = {
+    // Flips false the first time any localStorage call throws (private mode, quota,
+    // storage disabled). startToolbar checks it once to emit a friendly-mode note.
+    ok: true,
     key: function (sketchName, key) {
       return "p5toolbar:" + (sketchName || "default") + ":" + key;
     },
@@ -146,6 +176,7 @@
         const raw = window.localStorage.getItem(storage.key(sketchName, key));
         return raw === null ? fallback : JSON.parse(raw);
       } catch (e) {
+        storage.ok = false;
         return fallback;
       }
     },
@@ -153,7 +184,14 @@
       try {
         window.localStorage.setItem(storage.key(sketchName, key), JSON.stringify(value));
       } catch (e) {
-        // localStorage unavailable (private mode, quota) — non-critical, degrade silently.
+        storage.ok = false; // non-critical — the feature just doesn't persist
+      }
+    },
+    remove: function (sketchName, key) {
+      try {
+        window.localStorage.removeItem(storage.key(sketchName, key));
+      } catch (e) {
+        storage.ok = false;
       }
     },
   };
@@ -239,6 +277,11 @@
     link.id = "p5toolbar-styles";
     link.rel = "stylesheet";
     link.href = href;
+    link.onerror = function () {
+      log.debug(
+        "Stylesheet failed to load from " + href + " — the toolbar will look unstyled."
+      );
+    };
     document.head.appendChild(link);
   }
 
@@ -259,11 +302,14 @@
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 
-  function resolveEffectiveTheme() {
-    if (state.themeOverridden) return state.theme;
+  function systemTheme() {
     return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
       ? "dark"
       : "light";
+  }
+
+  function resolveEffectiveTheme() {
+    return state.themeOverridden ? state.theme : systemTheme();
   }
 
   function updateThemeButton() {
@@ -281,9 +327,20 @@
   }
 
   function toggleTheme() {
-    // Session-only, deliberately never persisted — next load always starts from OS preference.
-    state.themeOverridden = true;
     state.theme = state.theme === "dark" ? "light" : "dark";
+
+    if (state.theme === systemTheme()) {
+      // Toggled back to what the OS wants — drop the override and resume following it,
+      // future OS changes included (see bindThemeMediaQuery). This is the only way
+      // back to auto: there's no third button state for it.
+      state.themeOverridden = false;
+      storage.remove(null, "theme");
+    } else {
+      state.themeOverridden = true;
+      // Global chrome preference, stored the same way as position/visibility.
+      storage.set(null, "theme", state.theme);
+    }
+
     document.documentElement.dataset.theme = state.theme;
     updateThemeButton();
   }
@@ -617,8 +674,8 @@
     (state.config.widgets || []).forEach(function (name) {
       const def = registry[name];
       if (!def) {
-        console.warn(
-          '[p5.toolbar] Widget "' +
+        log.warn(
+          'Widget "' +
             name +
             '" is not registered — skipping. ' +
             "Register it with P5Toolbar.registerWidget() before calling init(), or remove it from the widgets list."
@@ -824,8 +881,8 @@
   });
 
   // ---------------------------------------------------------------------------------
-  // Hidden-toolbar toast — a visual counterpart to the console.info in startToolbar,
-  // for when the dev console isn't open. Shown only if the toolbar loads hidden AND no
+  // Hidden-toolbar toast — a visual counterpart to the log.info in startToolbar, for
+  // when the dev console isn't open. Shown only if the toolbar loads hidden AND no
   // toolbar has initialised in the last TOAST_MIN_GAP_MS, so a quick run / re-run
   // cycle (where the student plainly knows it's off) stays quiet. Styling and its
   // fixed top-centre placement come from .p5toolbar-toast in p5.toolbar.css.
@@ -892,6 +949,11 @@
       false
     );
 
+    const savedTheme = storage.get(null, "theme", null);
+    if (savedTheme === "light" || savedTheme === "dark") {
+      state.themeOverridden = true;
+      state.theme = savedTheme;
+    }
     applyTheme();
     bindThemeMediaQuery();
 
@@ -906,8 +968,8 @@
     if (!savedVisible) {
       // Logged on every run so a student who forgot the toolbar is toggled off
       // (visibility persists globally) isn't left wondering why it never appeared.
-      console.info(
-        "[p5.toolbar] The toolbar is hidden. Press " +
+      log.info(
+        "The toolbar is hidden. Press " +
           formatShortcut(HIDE_SHORTCUT) +
           " to show it."
       );
@@ -918,6 +980,14 @@
 
     renderWidgets();
     bindShortcut();
+
+    // By now every restore above has touched storage, so storage.ok is settled.
+    if (!storage.ok) {
+      log.debug(
+        "localStorage isn't available — the toolbar won't remember its position, " +
+          "theme, or per-sketch widget state. (Private browsing, or site data disabled?)"
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------------
@@ -925,11 +995,24 @@
   // ---------------------------------------------------------------------------------
 
   function init(config) {
+    // p5 defines this the moment it loads. If it's missing, either the p5.js <script>
+    // tag isn't on the page or it's placed after this one — nothing the toolbar does
+    // will work, so stop here rather than sit on a canvas that never arrives.
+    if (typeof window.p5 === "undefined") {
+      log.error(
+        "p5.js isn't loaded. Add its <script> tag before p5.toolbar's, then reload."
+      );
+      return;
+    }
+
     config = config || {};
     state.config = {
       position: config.position || "left",
       widgets: config.widgets || ["grid", "hideCursor"],
       sketchName: config.sketchName || null,
+      // Friendly by default: stay quiet about failures a student can't fix. Set false
+      // to also log those (localStorage blocked, stylesheet missing) via log.debug().
+      friendly: config.friendly !== false,
     };
 
     injectStylesheet();

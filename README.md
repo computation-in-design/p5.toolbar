@@ -31,8 +31,15 @@ P5Toolbar.init({
   position: "left", // "left" | "top" | "right" | "bottom"
   widgets: ["grid", "hideCursor"], // which tools to show, in order
   sketchName: "week5-perlin-noise", // optional — see below
+  friendly: true, // default; set false to log setup problems for debugging
 });
 ```
+
+The toolbar keeps the console quiet by default — it only speaks up when something is
+actually broken (p5.js not loaded, an unknown widget name). `friendly: false` also logs
+the quieter failures it otherwise swallows, like `localStorage` being blocked or the
+stylesheet failing to load — useful when a sketch isn't behaving and you want to know
+why.
 
 **`sketchName`** namespaces this sketch's saved state (e.g. whether the grid is on and
 its contrast setting) so it doesn't mix with other sketches. The Web Editor runs every

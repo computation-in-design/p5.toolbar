@@ -69,13 +69,30 @@ jsDelivr, no npm package, no bundler.
   global (`storage.get/set(null, ...)`), deliberately *not* namespaced per sketch, since
   it's a personal preference about the toolbar chrome itself — a student's "I keep it on
   the right, hidden by default" habit should follow them across every sketch, not reset
-  per project. The global bucket also holds `lastInit` (a timestamp, every run) — it
-  only gates how often the "toolbar is hidden" toast reappears.
+  per project. Theme works the same way, with a twist: it follows `prefers-color-scheme` (live
+  changes included) until the student toggles it, at which point the chosen value is
+  stored and wins over the OS. Toggling back to whatever the OS currently prefers
+  *clears* the stored value and resumes following — that's the only route back to auto,
+  since a two-state button has no room for a third "auto" state. So the stored `theme`
+  key only ever holds an override, never "auto". The global bucket also holds `lastInit`
+  (a timestamp, every run) — it only gates how often the "toolbar is hidden" toast
+  reappears.
 
-- **When the toolbar loads hidden it says so** — a `console.info` every run, plus a
+- **When the toolbar loads hidden it says so** — a `log.info` every run, plus a
   brief on-canvas toast (`.p5toolbar-toast`, fixed at top-centre) when no
   run has happened in the last 15 minutes, so a forgotten toggle-off is recoverable
   without the dev console open. The toast is `pointer-events: none` and self-dismisses.
+
+- **The console stays quiet in normal use.** All output goes through the `log` helper
+  (prefixes `[p5.toolbar]`), and the level is chosen by severity, not habit: `log.error`
+  only when the toolbar genuinely can't run (p5.js missing — `init` bails); `log.warn`
+  only when something the caller passed is being ignored (an unregistered widget name);
+  `log.info` for deliberate friendly notices (hidden toolbar). Things a student can't
+  fix and that don't break anything — `localStorage` blocked, the CSS `<link>` 404ing —
+  stay silent. The audience is beginners; a red console line should mean something is
+  actually wrong. `init({ friendly: false })` (default `true`) flips those silent
+  failures on via `log.debug` for anyone debugging a setup — it only *adds* output, it
+  never downgrades a real error or warning.
 
 ## Widget contract
 
