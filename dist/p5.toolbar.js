@@ -12,24 +12,11 @@
   const scriptSrc = scriptEl ? scriptEl.src : null;
 
   // ---------------------------------------------------------------------------------
-  // Labels — centralized so localization is a find-and-swap later, not a rewrite.
-  // ---------------------------------------------------------------------------------
-
-  const LABELS = {
-    theme: "Toggle theme",
-    position: "Reposition toolbar",
-    hide: "Hide toolbar",
-    hideCursor: { off: "Hide cursor", on: "Show cursor" },
-    grid: { off: "Show grid", on: "Hide grid" },
-  };
-
-  // ---------------------------------------------------------------------------------
   // Console — the library stays quiet in normal use. It speaks only for a real
   // problem: error() when the toolbar can't run at all, warn() when something the
   // caller passed is being ignored. info() is for deliberate, friendly notices.
-  // localStorage and stylesheet failures degrade silently by default — not a
-  // student's problem to fix, and a red console line would just alarm them; pass
-  // init({ friendly: false }) to have debug() surface them too.
+  // localStorage and stylesheet failures degrade silently by default; init({ friendly:
+  // false }) routes them to debug() for anyone tracking down a setup problem.
   // ---------------------------------------------------------------------------------
 
   const log = {
@@ -44,10 +31,22 @@
     },
     debug: function (msg) {
       // Silent unless the caller opted out of friendly mode.
-      if (state.config && state.config.friendly === false) {
+      if (state.config && !state.config.friendly) {
         console.info("[p5.toolbar] " + msg);
       }
     },
+  };
+
+  // ---------------------------------------------------------------------------------
+  // Labels — centralized so localization is a single-file change.
+  // ---------------------------------------------------------------------------------
+
+  const LABELS = {
+    theme: "Toggle theme",
+    position: "Reposition toolbar",
+    hide: "Hide toolbar",
+    hideCursor: { off: "Hide cursor", on: "Show cursor" },
+    grid: { off: "Show grid", on: "Hide grid" },
   };
 
   // ---------------------------------------------------------------------------------
@@ -125,8 +124,8 @@
     '<path d="M12 3A9 9 0 0 0 12 21Z" fill="currentColor" stroke="none"></path>' +
     "</svg>";
 
-  // Position icon — rounded-rect frame with one edge's middle third filled, matching the
-  // current edge. Swapped by updatePositionButton().
+  // Rounded-rect frame with one edge's middle third filled, matching the current edge.
+  // Swapped by updatePositionButton().
   ICONS.positions = {
     left:
       "<svg " +
@@ -159,14 +158,14 @@
   };
 
   // ---------------------------------------------------------------------------------
-  // Storage — namespaced localStorage helper (p5toolbar:{sketchName}:{key}). See
-  // AGENTS.md: the Web Editor preview iframe shares one origin across sketches, so
-  // unnamespaced keys would leak state between unrelated sketches.
+  // Storage — namespaced localStorage helper (p5toolbar:{sketchName}:{key}). The Web
+  // Editor preview iframe shares one origin across sketches, so unnamespaced keys would
+  // leak state between unrelated sketches (see AGENTS.md).
   // ---------------------------------------------------------------------------------
 
   const storage = {
-    // Flips false the first time any localStorage call throws (private mode, quota,
-    // storage disabled). startToolbar checks it once to emit a friendly-mode note.
+    // Flips false the first time a call throws (private mode, quota, storage disabled).
+    // startToolbar checks it once to emit a friendly-mode note.
     ok: true,
     key: function (sketchName, key) {
       return "p5toolbar:" + (sketchName || "default") + ":" + key;
@@ -184,7 +183,7 @@
       try {
         window.localStorage.setItem(storage.key(sketchName, key), JSON.stringify(value));
       } catch (e) {
-        storage.ok = false; // non-critical — the feature just doesn't persist
+        storage.ok = false;
       }
     },
     remove: function (sketchName, key) {
@@ -197,16 +196,47 @@
   };
 
   // ---------------------------------------------------------------------------------
-  // Cursor-state resolver — widgets declare intent, this is the only code that writes
-  // canvas.style.cursor. Priority: earlier entries win over later ones — a fallback for
-  // the rare case multiple intents are registered at once; setCursorIntent below
-  // normally prevents that.
+  // Utilities
+  // ---------------------------------------------------------------------------------
+
+  // Clear a pending timeout and return null, for the `timer = clearTimer(timer)` idiom.
+  function clearTimer(id) {
+    if (id) clearTimeout(id);
+    return null;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Core state
+  // ---------------------------------------------------------------------------------
+
+  const POSITIONS = ["left", "top", "right", "bottom"];
+  const ORIENTATION = {
+    left: "vertical",
+    right: "vertical",
+    top: "horizontal",
+    bottom: "horizontal",
+  };
+
+  const state = {
+    config: null,
+    position: "left",
+    visible: true,
+    theme: "light",
+    themeOverridden: false,
+  };
+
+  const els = {}; // shell elements, populated by buildShell
+  let canvasEl = null; // the sketch's <canvas>, set by startToolbar
+
+  // ---------------------------------------------------------------------------------
+  // Cursor-state resolver — widgets declare intent; this is the only code that writes
+  // canvas.style.cursor. CURSOR_PRIORITY resolves the final value if more than one
+  // intent is ever registered at once; setCursorIntent normally prevents that.
   // ---------------------------------------------------------------------------------
 
   const CURSOR_PRIORITY = ["none", "crosshair"];
   const cursorIntents = new Map();
-  const widgetButtons = {}; // id -> button element, populated by renderWidget()
-  let canvasEl = null;
+  const widgetButtons = {}; // id -> button element, populated by renderWidget
 
   function applyCursor() {
     if (!canvasEl) return;
@@ -221,8 +251,8 @@
   }
 
   // Cursor-setting widgets are mutually exclusive — turning one on turns any other off
-  // first, via the same button click a real user would make (not a shortcut around it),
-  // so the other widget's own onToggle cleanup (rAF loops, DOM teardown, etc.) still runs.
+  // first via a real button click (not a shortcut around it), so the other widget's own
+  // onToggle cleanup (rAF loops, DOM teardown) still runs.
   function setCursorIntent(widgetId, value) {
     cursorIntents.forEach(function (_, otherId) {
       if (otherId !== widgetId && widgetButtons[otherId]) {
@@ -249,26 +279,9 @@
   }
 
   // ---------------------------------------------------------------------------------
-  // Shell
+  // Stylesheet & canvas — the CSS injects itself next to the script; init waits for the
+  // sketch's canvas to exist before building anything.
   // ---------------------------------------------------------------------------------
-
-  const POSITIONS = ["left", "top", "right", "bottom"];
-  const ORIENTATION = {
-    left: "vertical",
-    right: "vertical",
-    top: "horizontal",
-    bottom: "horizontal",
-  };
-
-  const state = {
-    config: null,
-    position: "left",
-    visible: true,
-    theme: "light",
-    themeOverridden: false,
-  };
-
-  const els = {};
 
   function injectStylesheet() {
     if (document.getElementById("p5toolbar-styles")) return;
@@ -298,9 +311,15 @@
         callback(found);
       }
     });
-    // documentElement instead of body — body may not exist yet on some hosts (e.g. Web Editor).
+    // documentElement, not body — body may not exist yet on some hosts (e.g. Web Editor).
     observer.observe(document.documentElement, { childList: true, subtree: true });
   }
+
+  // ---------------------------------------------------------------------------------
+  // Theme — follows prefers-color-scheme until the user toggles it. A toggle stores
+  // the choice and it wins over the OS; toggling back to the OS's current theme clears
+  // the override and resumes following (the only route back to auto).
+  // ---------------------------------------------------------------------------------
 
   function systemTheme() {
     return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
@@ -321,7 +340,7 @@
     state.theme = resolveEffectiveTheme();
     // On <html>, not .p5toolbar — the theme custom properties live on :root (see
     // p5.toolbar.css), so every themed element, including .p5toolbar-grid-readout
-    // (not a descendant of .p5toolbar), picks this up through normal inheritance.
+    // (not a descendant of .p5toolbar), picks it up through normal inheritance.
     document.documentElement.dataset.theme = state.theme;
     updateThemeButton();
   }
@@ -330,19 +349,16 @@
     state.theme = state.theme === "dark" ? "light" : "dark";
 
     if (state.theme === systemTheme()) {
-      // Toggled back to what the OS wants — drop the override and resume following it,
-      // future OS changes included (see bindThemeMediaQuery). This is the only way
-      // back to auto: there's no third button state for it.
+      // Back to what the OS wants — drop the override and resume following it, future OS
+      // changes included (see bindThemeMediaQuery).
       state.themeOverridden = false;
       storage.remove(null, "theme");
     } else {
       state.themeOverridden = true;
-      // Global chrome preference, stored the same way as position/visibility.
       storage.set(null, "theme", state.theme);
     }
 
-    document.documentElement.dataset.theme = state.theme;
-    updateThemeButton();
+    applyTheme();
   }
 
   function bindThemeMediaQuery() {
@@ -356,6 +372,10 @@
     else if (mq.addListener) mq.addListener(handler);
   }
 
+  // ---------------------------------------------------------------------------------
+  // Position — which edge the toolbar sits on. Global preference, cycled by its button.
+  // ---------------------------------------------------------------------------------
+
   function updatePositionButton() {
     els.positionBtn.querySelector("svg").outerHTML = ICONS.positions[state.position];
   }
@@ -367,8 +387,7 @@
     updatePositionButton();
     resetTooltipWarmState();
     if (persist !== false) {
-      // Global, not per-sketch — this is a toolbar chrome preference, not sketch data.
-      storage.set(null, "position", pos);
+      storage.set(null, "position", pos); // global — a chrome preference, not sketch data
     }
   }
 
@@ -377,16 +396,20 @@
     setPosition(POSITIONS[(idx + 1) % POSITIONS.length]);
   }
 
+  // ---------------------------------------------------------------------------------
+  // Visibility — hide/show the whole toolbar (Shift+T). Global preference.
+  // ---------------------------------------------------------------------------------
+
   function setVisible(visible, persist) {
     state.visible = visible;
     if (visible) {
       els.root.removeAttribute("hidden");
-      dismissHiddenToast(); // the toolbar is on screen now — the notice is moot
+      dismissHiddenToast(); // the toolbar is on screen — the "it's hidden" notice is moot
     } else {
       els.root.setAttribute("hidden", "");
     }
     if (persist !== false) {
-      storage.set(null, "visible", visible); // global, same reasoning as setPosition above
+      storage.set(null, "visible", visible);
     }
   }
 
@@ -394,17 +417,19 @@
     setVisible(!state.visible);
   }
 
-  // Keep pointer/click/scroll events that land on our own UI from also reaching the
-  // sketch. p5 registers its input listeners on `window` in the bubble phase (the
-  // pointer-event set in 2.x, the mouse/touch set in 1.x), so without this a click on
-  // a toolbar sitting over the canvas also fires the sketch's mousePressed(),
-  // mouseClicked(), mouseWheel(), touchStarted(), etc.
+  // ---------------------------------------------------------------------------------
+  // Canvas event isolation — pointer/click/scroll events that land on the toolbar's own
+  // UI shouldn't also reach the sketch. p5 registers its input listeners on `window` in
+  // the bubble phase (pointer events in 2.x, mouse/touch in 1.x), so stopping
+  // propagation on our elements keeps a click on a toolbar over the canvas from firing
+  // the sketch's mousePressed(), mouseWheel(), touchStarted(), etc.
   //
-  // A release is passed through when its press started somewhere else (i.e. the
-  // canvas): the capture-phase listeners below clear the flag before any target
-  // handler runs, and containSketchEvents() sets it again only for a press that
-  // actually hit our UI — so a drag begun on the canvas and finished over the toolbar
-  // still delivers its release to p5 and the sketch's drag state doesn't stick.
+  // A release passes through when its press started off our UI (i.e. on the canvas): the
+  // capture-phase listeners clear the flag before any target handler runs, and
+  // containSketchEvents sets it again only for a press that hit our UI — so a drag begun
+  // on the canvas and finished over the toolbar still delivers its release to p5.
+  // ---------------------------------------------------------------------------------
+
   const PRESS_EVENTS = ["pointerdown", "mousedown", "touchstart"];
   const RELEASE_EVENTS = ["pointerup", "mouseup", "touchend"];
   let pressStartedInUI = false;
@@ -442,25 +467,21 @@
     });
   }
 
-  // Shared guard for every keyboard shortcut below — never fire while a student is
-  // typing into their own createInput() field or similar.
+  // ---------------------------------------------------------------------------------
+  // Keyboard shortcuts — opt-in per widget, matched on an exact modifier combination.
+  // ---------------------------------------------------------------------------------
+
+  const HIDE_SHORTCUT = { code: "KeyT", shiftKey: true };
+
+  // Never fire a shortcut while the user is typing into a createInput() field or similar.
   function isTypingInField() {
     const active = document.activeElement;
     const tag = active && active.tagName;
     return tag === "INPUT" || tag === "TEXTAREA" || (active && active.isContentEditable);
   }
 
-  const HIDE_SHORTCUT = { code: "KeyT", shiftKey: true };
-
-  function bindShortcut() {
-    window.addEventListener("keydown", function (e) {
-      if (isTypingInField() || !matchesShortcut(e, HIDE_SHORTCUT)) return;
-      toggleVisibility();
-    });
-  }
-
-  // Exact modifier match (not just "shiftKey is down"), so e.g. Shift+C won't also fire
-  // on Cmd/Ctrl+Shift+C — which browsers use for devtools inspect-element.
+  // Exact match, not just "shiftKey is down" — so Shift+C won't also fire on
+  // Cmd/Ctrl+Shift+C (the browser devtools inspect-element chord).
   function matchesShortcut(e, shortcut) {
     if (!shortcut || e.code !== shortcut.code) return false;
     return (
@@ -471,7 +492,7 @@
     );
   }
 
-  // Every OS names this key differently — avoid hardcoding "Cmd".
+  // Every OS names the meta key differently — avoid hardcoding "Cmd".
   function metaKeyLabel() {
     const info = (
       (navigator.platform || "") +
@@ -483,7 +504,7 @@
     return "Meta";
   }
 
-  // "KeyC" -> "C" for the compact chip shown in the tooltip and appended to aria-label.
+  // { code: "KeyC", shiftKey: true } -> "Shift+C" for the tooltip chip and aria-label.
   function formatShortcut(shortcut) {
     const parts = [];
     if (shortcut.metaKey) parts.push(metaKeyLabel());
@@ -500,60 +521,60 @@
     return label + " (" + formatShortcut(shortcut) + ")";
   }
 
-  // Tooltip warm-state — the first tooltip in a "session" waits out the full CSS
-  // show-delay (see p5.toolbar.css), but moving directly to another button shortly
-  // after should feel instant, like most native tooltip groups.
+  function bindShortcut() {
+    window.addEventListener("keydown", function (e) {
+      if (isTypingInField() || !matchesShortcut(e, HIDE_SHORTCUT)) return;
+      toggleVisibility();
+    });
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Tooltips — the first tooltip in a session waits out the full CSS show-delay; moving
+  // straight to another button shortly after should feel instant, like native tooltip
+  // groups. A [data-tooltip-warm] flag on the root drives that from the CSS.
+  // ---------------------------------------------------------------------------------
+
   let tooltipWarm = false;
   let tooltipTimer = null;
 
-  // Reads --p5toolbar-tooltip-delay from the CSS rather than hardcoding a duplicate
-  // number here, so the "warm" handoff timing can never drift out of sync with the
-  // actual show-delay — change the delay in p5.toolbar.css only.
+  // Reads --p5toolbar-tooltip-delay from the CSS so this can't drift from the actual
+  // show-delay — change the delay in p5.toolbar.css only.
   function getTooltipDelayMs() {
     const raw = getComputedStyle(els.root).getPropertyValue("--p5toolbar-tooltip-delay");
     const match = /^\s*(-?[\d.]+)(m?s)\s*$/.exec(raw);
-    if (!match) return 750; // stylesheet not loaded yet or property missing — safe fallback
+    if (!match) return 750; // stylesheet not loaded yet or property missing
     const value = parseFloat(match[1]);
     return match[2] === "ms" ? value : value * 1000;
   }
 
-  // Called whenever the toolbar moves to a new edge (see setPosition) — a warm/cooling
-  // state from the old position shouldn't carry over to the new one.
-  function resetTooltipWarmState() {
-    if (tooltipTimer) {
-      clearTimeout(tooltipTimer);
+  // Schedule the warm<->cool flip after the show-delay. A hover/leave in the other
+  // direction before it fires cancels it (clearTimer), and an already-matching state is
+  // a no-op.
+  function scheduleTooltipWarm(warm) {
+    tooltipTimer = clearTimer(tooltipTimer);
+    if (tooltipWarm === warm) return;
+    tooltipTimer = setTimeout(function () {
+      tooltipWarm = warm;
+      if (warm) els.root.setAttribute("data-tooltip-warm", "true");
+      else els.root.removeAttribute("data-tooltip-warm");
       tooltipTimer = null;
-    }
-    tooltipWarm = false;
-    els.root.removeAttribute("data-tooltip-warm");
+    }, getTooltipDelayMs());
   }
 
   function onTooltipEnter() {
-    if (tooltipTimer) {
-      clearTimeout(tooltipTimer);
-      tooltipTimer = null;
-    }
-    if (!tooltipWarm) {
-      tooltipTimer = setTimeout(function () {
-        tooltipWarm = true;
-        els.root.setAttribute("data-tooltip-warm", "true");
-        tooltipTimer = null;
-      }, getTooltipDelayMs());
-    }
+    scheduleTooltipWarm(true);
   }
 
   function onTooltipLeave() {
-    if (tooltipTimer) {
-      clearTimeout(tooltipTimer);
-      tooltipTimer = null;
-    }
-    if (tooltipWarm) {
-      tooltipTimer = setTimeout(function () {
-        tooltipWarm = false;
-        els.root.removeAttribute("data-tooltip-warm");
-        tooltipTimer = null;
-      }, getTooltipDelayMs());
-    }
+    scheduleTooltipWarm(false);
+  }
+
+  // On a move to a new edge (see setPosition) the old position's warm state shouldn't
+  // carry over.
+  function resetTooltipWarmState() {
+    tooltipTimer = clearTimer(tooltipTimer);
+    tooltipWarm = false;
+    els.root.removeAttribute("data-tooltip-warm");
   }
 
   // Shortcut gets its own span (not folded into the label) so it can carry separate
@@ -577,6 +598,10 @@
     return tooltip;
   }
 
+  // ---------------------------------------------------------------------------------
+  // Buttons & widgets
+  // ---------------------------------------------------------------------------------
+
   function makeButton(opts) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -592,13 +617,22 @@
     return btn;
   }
 
-  // Widget icon/label may be a plain string (fixed, e.g. for action-type widgets) or an
-  // { off, on } pair for toggle widgets that reflect their current state.
+  // Widget icon/label is either a fixed string or an { off, on } pair; a toggle widget
+  // shows the pair member for its current state.
   function resolveStateful(value, active) {
     if (value && typeof value === "object") {
       return active ? value.on : value.off;
     }
     return value;
+  }
+
+  // Reflect a toggle widget's on/off state on its button — icon, label, ARIA, tooltip.
+  function renderToggle(btn, def, active) {
+    btn.setAttribute("aria-pressed", String(active));
+    btn.querySelector("svg").outerHTML = resolveStateful(def.icon, active);
+    const label = resolveStateful(def.label, active);
+    btn.setAttribute("aria-label", accessibleLabel(label, def.shortcut));
+    btn.querySelector(".p5toolbar__tooltip-label").textContent = label;
   }
 
   function renderWidget(id, def) {
@@ -613,11 +647,7 @@
       },
       storage: {
         get: function (key, fallback) {
-          return storage.get(
-            state.config.sketchName,
-            "widget:" + id + ":" + key,
-            fallback
-          );
+          return storage.get(state.config.sketchName, "widget:" + id + ":" + key, fallback);
         },
         set: function (key, value) {
           storage.set(state.config.sketchName, "widget:" + id + ":" + key, value);
@@ -625,23 +655,20 @@
       },
     };
 
-    // Toggle widgets with persist:true remember their on/off state per sketch (via
-    // ctx.storage). A restored "on" state is applied below, after the button is in the
-    // DOM, by running onToggle the same way a click would.
-    const persist = def.type === "toggle" && def.persist === true;
+    const isToggle = def.type === "toggle";
+    // With persist:true, a toggle widget remembers its on/off state per sketch. A
+    // restored "on" state is replayed below, after the button is in the DOM.
+    const persist = isToggle && def.persist === true;
     let active = persist && !!ctx.storage.get("active", false);
+
     const btn = makeButton({
       icon: resolveStateful(def.icon, active),
       label: resolveStateful(def.label, active),
       shortcut: def.shortcut,
       onClick: function () {
-        if (def.type === "toggle") {
+        if (isToggle) {
           active = !active;
-          btn.setAttribute("aria-pressed", String(active));
-          btn.querySelector("svg").outerHTML = resolveStateful(def.icon, active);
-          const label = resolveStateful(def.label, active);
-          btn.setAttribute("aria-label", accessibleLabel(label, def.shortcut));
-          btn.querySelector(".p5toolbar__tooltip-label").textContent = label;
+          renderToggle(btn, def, active);
           if (persist) ctx.storage.set("active", active);
           def.onToggle(active, ctx);
         } else {
@@ -649,21 +676,21 @@
         }
       },
     });
-    if (def.type === "toggle") {
-      btn.setAttribute("aria-pressed", String(active));
-    }
+    if (isToggle) renderToggle(btn, def, active);
+
     if (def.shortcut) {
       window.addEventListener("keydown", function (e) {
         if (isTypingInField() || !matchesShortcut(e, def.shortcut)) return;
         btn.click();
       });
     }
+
     widgetButtons[id] = btn;
     els.widgets.appendChild(btn);
 
-    // Replay a persisted "on" state. Safe to run inline: widgets render in config
-    // order, so any earlier widget this one's setCursor would need to click off is
-    // already built, and later ones haven't registered a cursor intent yet.
+    // Replay a persisted "on" state. Safe inline: widgets render in config order, so any
+    // earlier widget this one's setCursor would click off already exists, and later ones
+    // haven't registered a cursor intent yet.
     if (active) {
       def.onToggle(true, ctx);
     }
@@ -685,6 +712,10 @@
       renderWidget(name, def);
     });
   }
+
+  // ---------------------------------------------------------------------------------
+  // Shell assembly
+  // ---------------------------------------------------------------------------------
 
   function buildShell() {
     const root = document.createElement("div");
@@ -739,14 +770,23 @@
   // Built-in widget: hide cursor — registered the same way a third-party widget would be.
   // ---------------------------------------------------------------------------------
 
+  const CURSOR_SHORTCUT = { code: "KeyC", shiftKey: true };
+
   registerWidget("hideCursor", {
     icon: ICONS.cursor,
     label: LABELS.hideCursor,
     type: "toggle",
-    shortcut: { code: "KeyC", shiftKey: true },
+    shortcut: CURSOR_SHORTCUT,
     onToggle: function (active, ctx) {
       if (active) {
         ctx.setCursor("none");
+        // The cursor vanishing over the canvas is disorienting if it wasn't deliberate,
+        // and the button is hard to re-aim at once it's gone — point at the shortcut.
+        log.info(
+          "The cursor is hidden. Press " +
+            formatShortcut(CURSOR_SHORTCUT) +
+            " to show it."
+        );
       } else {
         ctx.clearCursor();
       }
@@ -757,10 +797,9 @@
   // Built-in widget: grid overlay.
   //
   // .p5toolbar-grid and .p5toolbar-grid-readout are document.body children, not
-  // descendants of .p5toolbar — .p5toolbar's own transform makes it the containing
-  // block for position:fixed descendants at any depth, which would break their
-  // canvas-relative positioning. .p5toolbar's z-index still renders it above both
-  // regardless of DOM order, so neither element needs its own.
+  // descendants of .p5toolbar — .p5toolbar's own transform would become the containing
+  // block for their position:fixed at any depth, breaking the canvas-relative math.
+  // .p5toolbar's z-index still renders it above both regardless of DOM order.
   // ---------------------------------------------------------------------------------
 
   const GRID_SIZE_PX = 50; // not configurable
@@ -792,8 +831,8 @@
     gridRafId = requestAnimationFrame(gridFrameLoop);
   }
 
-  // Manual escape hatch for mix-blend-mode:difference's contrast blind spot near
-  // mid-gray backgrounds — see the color choice in p5.toolbar.css for the math.
+  // Escape hatch for mix-blend-mode:difference's contrast blind spot near mid-gray
+  // backgrounds — see the color choice in p5.toolbar.css for the math.
   function toggleGridInvert() {
     gridInverted = !gridInverted;
     gridOverlayEl.dataset.inverted = String(gridInverted);
@@ -804,6 +843,72 @@
     btn.querySelector("svg").style.transform = gridInverted ? "rotate(180deg)" : "";
   }
 
+  function buildGrid(ctx) {
+    ctx.setCursor("crosshair");
+    gridCtx = ctx;
+    gridInverted = !!ctx.storage.get("inverted", false);
+
+    gridOverlayEl = document.createElement("div");
+    gridOverlayEl.className = "p5toolbar-grid";
+    gridOverlayEl.dataset.inverted = String(gridInverted);
+    gridOverlayEl.style.setProperty("--p5toolbar-grid-size", GRID_SIZE_PX + "px");
+
+    gridReadoutEl = document.createElement("div");
+    gridReadoutEl.className = "p5toolbar-grid-readout";
+
+    gridCoordsEl = document.createElement("span");
+    gridCoordsEl.className = "p5toolbar-grid-readout__coords";
+    gridReadoutEl.appendChild(gridCoordsEl);
+
+    const invertBtn = document.createElement("button");
+    invertBtn.type = "button";
+    invertBtn.className = "p5toolbar-grid-readout__invert";
+    invertBtn.setAttribute("aria-pressed", String(gridInverted));
+    invertBtn.setAttribute("aria-label", "Invert grid line color");
+    invertBtn.innerHTML = ICONS.invert;
+    if (gridInverted) {
+      invertBtn.querySelector("svg").style.transform = "rotate(180deg)";
+    }
+    invertBtn.addEventListener("click", toggleGridInvert);
+    gridReadoutEl.appendChild(invertBtn);
+
+    document.body.appendChild(gridOverlayEl);
+    document.body.appendChild(gridReadoutEl);
+    // The overlay is pointer-events:none, so only the readout can take a click that
+    // would otherwise fall through to the sketch.
+    containSketchEvents(gridReadoutEl);
+
+    syncGridRect();
+    gridResizeHandler = syncGridRect;
+    window.addEventListener("resize", gridResizeHandler);
+    window.addEventListener("scroll", gridResizeHandler, { passive: true });
+    gridResizeObserver = new ResizeObserver(syncGridRect);
+    gridResizeObserver.observe(canvasEl);
+
+    gridRafId = requestAnimationFrame(gridFrameLoop);
+  }
+
+  function teardownGrid(ctx) {
+    ctx.clearCursor();
+
+    if (gridRafId) cancelAnimationFrame(gridRafId);
+    if (gridResizeObserver) gridResizeObserver.disconnect();
+    if (gridResizeHandler) {
+      window.removeEventListener("resize", gridResizeHandler);
+      window.removeEventListener("scroll", gridResizeHandler);
+    }
+    if (gridOverlayEl) gridOverlayEl.remove();
+    if (gridReadoutEl) gridReadoutEl.remove();
+
+    gridRafId = null;
+    gridResizeObserver = null;
+    gridResizeHandler = null;
+    gridOverlayEl = null;
+    gridReadoutEl = null;
+    gridCoordsEl = null;
+    gridCtx = null;
+  }
+
   registerWidget("grid", {
     icon: ICONS.grid,
     label: LABELS.grid,
@@ -811,81 +916,17 @@
     persist: true,
     shortcut: { code: "KeyG", shiftKey: true },
     onToggle: function (active, ctx) {
-      if (active) {
-        ctx.setCursor("crosshair");
-
-        gridCtx = ctx;
-        gridInverted = !!ctx.storage.get("inverted", false);
-
-        gridOverlayEl = document.createElement("div");
-        gridOverlayEl.className = "p5toolbar-grid";
-        gridOverlayEl.dataset.inverted = String(gridInverted);
-        gridOverlayEl.style.setProperty("--p5toolbar-grid-size", GRID_SIZE_PX + "px");
-
-        gridReadoutEl = document.createElement("div");
-        gridReadoutEl.className = "p5toolbar-grid-readout";
-
-        gridCoordsEl = document.createElement("span");
-        gridCoordsEl.className = "p5toolbar-grid-readout__coords";
-        gridReadoutEl.appendChild(gridCoordsEl);
-
-        const invertBtn = document.createElement("button");
-        invertBtn.type = "button";
-        invertBtn.className = "p5toolbar-grid-readout__invert";
-        invertBtn.setAttribute("aria-pressed", String(gridInverted));
-        invertBtn.setAttribute("aria-label", "Invert grid line color");
-        invertBtn.innerHTML = ICONS.invert;
-        if (gridInverted) {
-          invertBtn.querySelector("svg").style.transform = "rotate(180deg)";
-        }
-        invertBtn.addEventListener("click", toggleGridInvert);
-        gridReadoutEl.appendChild(invertBtn);
-
-        document.body.appendChild(gridOverlayEl);
-        document.body.appendChild(gridReadoutEl);
-        // The overlay itself is pointer-events:none, so only the readout can take a
-        // click that would otherwise fall through to the sketch.
-        containSketchEvents(gridReadoutEl);
-
-        syncGridRect();
-        gridResizeHandler = syncGridRect;
-        window.addEventListener("resize", gridResizeHandler);
-        window.addEventListener("scroll", gridResizeHandler, { passive: true });
-        gridResizeObserver = new ResizeObserver(syncGridRect);
-        gridResizeObserver.observe(canvasEl);
-
-        gridRafId = requestAnimationFrame(gridFrameLoop);
-      } else {
-        ctx.clearCursor();
-
-        if (gridRafId) cancelAnimationFrame(gridRafId);
-        gridRafId = null;
-
-        if (gridResizeObserver) gridResizeObserver.disconnect();
-        gridResizeObserver = null;
-
-        if (gridResizeHandler) {
-          window.removeEventListener("resize", gridResizeHandler);
-          window.removeEventListener("scroll", gridResizeHandler);
-        }
-        gridResizeHandler = null;
-
-        if (gridOverlayEl) gridOverlayEl.remove();
-        if (gridReadoutEl) gridReadoutEl.remove();
-        gridOverlayEl = null;
-        gridReadoutEl = null;
-        gridCoordsEl = null;
-        gridCtx = null;
-      }
+      if (active) buildGrid(ctx);
+      else teardownGrid(ctx);
     },
   });
 
   // ---------------------------------------------------------------------------------
   // Hidden-toolbar toast — a visual counterpart to the log.info in startToolbar, for
   // when the dev console isn't open. Shown only if the toolbar loads hidden AND no
-  // toolbar has initialised in the last TOAST_MIN_GAP_MS, so a quick run / re-run
-  // cycle (where the student plainly knows it's off) stays quiet. Styling and its
-  // fixed top-centre placement come from .p5toolbar-toast in p5.toolbar.css.
+  // toolbar has initialised in the last TOAST_MIN_GAP_MS, so a quick run / re-run cycle
+  // (where the user plainly knows it's off) stays quiet. Styling and its fixed
+  // top-centre placement come from .p5toolbar-toast in p5.toolbar.css.
   // ---------------------------------------------------------------------------------
 
   const TOAST_MIN_GAP_MS = 15 * 60 * 1000;
@@ -921,10 +962,7 @@
   }
 
   function dismissHiddenToast() {
-    if (toastHideTimer) {
-      clearTimeout(toastHideTimer);
-      toastHideTimer = null;
-    }
+    toastHideTimer = clearTimer(toastHideTimer);
     if (!toastEl) return;
     const el = toastEl;
     toastEl = null;
@@ -966,8 +1004,8 @@
     storage.set(null, "lastInit", now);
 
     if (!savedVisible) {
-      // Logged on every run so a student who forgot the toolbar is toggled off
-      // (visibility persists globally) isn't left wondering why it never appeared.
+      // Logged on every run so a user who forgot the toolbar is toggled off (visibility
+      // persists globally) isn't left wondering why it never appeared.
       log.info(
         "The toolbar is hidden. Press " +
           formatShortcut(HIDE_SHORTCUT) +
@@ -1010,8 +1048,8 @@
       position: config.position || "left",
       widgets: config.widgets || ["grid", "hideCursor"],
       sketchName: config.sketchName || null,
-      // Friendly by default: stay quiet about failures a student can't fix. Set false
-      // to also log those (localStorage blocked, stylesheet missing) via log.debug().
+      // Friendly by default: stay quiet about failures a student can't fix. Set false to
+      // also log those (localStorage blocked, stylesheet missing) via log.debug().
       friendly: config.friendly !== false,
     };
 

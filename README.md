@@ -57,7 +57,7 @@ P5Toolbar.init({ sketchName: "week5-perlin-noise" });
 
 Use a stable, unique string per sketch — the same name next session restores that
 sketch's state. There's no reliable way to derive one automatically (the preview URL
-changes the moment a student duplicates the sketch), so it's a manual choice.
+changes the moment someone duplicates the sketch), so it's a manual choice.
 
 ## Adding your own tools
 

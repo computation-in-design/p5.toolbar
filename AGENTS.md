@@ -36,7 +36,12 @@ jsDelivr, no npm package, no bundler.
   inheritance instead of hand-copied local redeclarations. The `--p5toolbar-` prefix
   keeps the collision risk with a host page's own custom properties effectively nil.
   `document.documentElement.dataset.theme` (not `.p5toolbar`'s own) is what the dark-mode
-  override actually keys off — see `applyTheme()`.
+  override actually keys off — see `applyTheme()`. The CSS also uses **native CSS
+  nesting** (`&`-prefixed, no build step) — a block's state and variant rules
+  (`&:hover`, `&[data-*]`, `& svg`, contextual `.p5toolbar[...] &`) nest under it; BEM
+  `__element` selectors stay flat so their specificity doesn't creep. No Sass/Less, and
+  no `&`-concatenation (`&__x` is invalid native syntax). This sets the browser floor at
+  Chrome 112 / Safari 16.5 / Firefox 117 (2023).
 - **Widgets register themselves.** Built-in widgets use the same
   `P5Toolbar.registerWidget(name, definition)` call a third-party widget would use —
   nothing is special-cased internally. Third-party widgets can live entirely outside this
@@ -67,10 +72,10 @@ jsDelivr, no npm package, no bundler.
   one origin across all sketches, so unnamespaced *widget* keys would leak state between
   unrelated sketches. Shell state (toolbar position, visibility) is the opposite: always
   global (`storage.get/set(null, ...)`), deliberately *not* namespaced per sketch, since
-  it's a personal preference about the toolbar chrome itself — a student's "I keep it on
+  it's a personal preference about the toolbar chrome itself — a user's "I keep it on
   the right, hidden by default" habit should follow them across every sketch, not reset
   per project. Theme works the same way, with a twist: it follows `prefers-color-scheme` (live
-  changes included) until the student toggles it, at which point the chosen value is
+  changes included) until the user toggles it, at which point the chosen value is
   stored and wins over the OS. Toggling back to whatever the OS currently prefers
   *clears* the stored value and resumes following — that's the only route back to auto,
   since a two-state button has no room for a third "auto" state. So the stored `theme`
@@ -87,7 +92,8 @@ jsDelivr, no npm package, no bundler.
   (prefixes `[p5.toolbar]`), and the level is chosen by severity, not habit: `log.error`
   only when the toolbar genuinely can't run (p5.js missing — `init` bails); `log.warn`
   only when something the caller passed is being ignored (an unregistered widget name);
-  `log.info` for deliberate friendly notices (hidden toolbar). Things a student can't
+  `log.info` for deliberate friendly notices (toolbar hidden on load; cursor hidden by
+  the widget). Things a student can't
   fix and that don't break anything — `localStorage` blocked, the CSS `<link>` 404ing —
   stay silent. The audience is beginners; a red console line should mean something is
   actually wrong. `init({ friendly: false })` (default `true`) flips those silent
@@ -116,7 +122,7 @@ Every widget — built-in or third-party — is a plain object passed to
   "what will happen if you click again," not just a status label.
 - `persist: true` (toggle widgets only) makes the shell store the on/off state under
   `ctx.storage` and, on the next load, render the button pressed and replay `onToggle`
-  as if the student had clicked it. Any other state the widget wants remembered (the
+  as if the user had clicked it. Any other state the widget wants remembered (the
   grid's contrast toggle, say) is on the widget to save/restore through `ctx.storage`
   itself. Per-sketch, so it follows `sketchName` — without one, all Web Editor sketches
   share a bucket (see the `localStorage` note above).
@@ -129,7 +135,7 @@ Every widget — built-in or third-party — is a plain object passed to
   per-instance in `renderWidget()`, not scanned across the whole registry), and it's
   wired generically — no shell code is specific to any one widget's shortcut.
 - `shortcut` is opt-in per widget, not automatic — they're global and can collide with a
-  student's own `keyPressed()` bindings. Reach for one when a widget is either hard to
+  user's own `keyPressed()` bindings. Reach for one when a widget is either hard to
   toggle by other means (`hideCursor`: with the cursor hidden, clicking a small button to
   turn it back on is itself hard to aim) or expected to be toggled often enough during a
   session that reaching for the mouse each time is real friction (`grid`: `Shift+G`).

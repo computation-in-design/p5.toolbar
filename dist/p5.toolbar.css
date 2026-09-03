@@ -1,24 +1,32 @@
-/* p5.toolbar — shell styles. Auto-injected via <link> by p5.toolbar.js; students never
-   link it directly. Scoped under .p5toolbar, with one exception: the custom-property
-   block below lives on :root, not .p5toolbar, so .p5toolbar-grid-readout (a separate
-   document.body child — see the comment near .p5toolbar-grid for why) can inherit these
-   values directly. They're inert until referenced by name, so the --p5toolbar- prefix
-   keeps collision risk with the host page effectively nil. */
+/* p5.toolbar — shell styles. Auto-injected via <link> by p5.toolbar.js; users never
+   link it directly. Everything is scoped under .p5toolbar / .p5toolbar-*, with one
+   exception: the custom-property block below sits on :root, not .p5toolbar, so
+   .p5toolbar-grid-readout and .p5toolbar-toast (separate document.body children — see
+   the comment beside .p5toolbar-grid) inherit the tokens directly. The properties are
+   inert until referenced, so the --p5toolbar- prefix keeps collision risk with the host
+   page effectively nil. */
 
 :root {
+  /* Surface palette — swapped wholesale for dark mode below. */
   --p5toolbar-bg: #ffffff;
   --p5toolbar-fg: #1a1a1a;
   --p5toolbar-border: rgba(0, 0, 0, 0.12);
   --p5toolbar-hover: rgba(0, 0, 0, 0.07);
   --p5toolbar-active: rgba(0, 0, 0, 0.1);
   --p5toolbar-accent: #2563eb;
-  /* Read by p5.toolbar.js (getTooltipDelayMs) so the JS "warm" handoff timing can't drift
-     from the actual show-delay below — change it here only, not in the JS. */
+  --p5toolbar-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+
+  --p5toolbar-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --p5toolbar-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    monospace;
+
+  /* Read by p5.toolbar.js (getTooltipDelayMs) so the JS "warm" handoff can't drift from
+     the show-delay — change it here only. */
   --p5toolbar-tooltip-delay: 0.75s;
 
-  /* Spacing/size/font-size scale — named so every gap/padding/margin below points at one
-   of these instead of a bare number repeated in five places. Values are hand-picked, not
-   derived from a ratio, so add a new step here rather than reaching for a raw px again. */
+  /* Spacing/size scale — every gap, padding and margin points at one of these instead
+     of a bare number. Values are hand-picked, not a ratio; add a step here rather than
+     reach for a raw px. */
   --p5toolbar-space-1: 4px;
   --p5toolbar-space-2: 6px;
   --p5toolbar-space-3: 8px;
@@ -46,6 +54,23 @@
   box-sizing: border-box;
 }
 
+/* Shared surface — the raised-panel look common to the toolbar and every floating
+   element that isn't nested inside it. */
+.p5toolbar,
+.p5toolbar__tooltip,
+.p5toolbar-grid-readout,
+.p5toolbar-toast {
+  background: var(--p5toolbar-bg);
+  color: var(--p5toolbar-fg);
+  border: 1px solid var(--p5toolbar-border);
+  box-shadow: var(--p5toolbar-shadow);
+  font-family: var(--p5toolbar-font);
+}
+
+/* ---------------------------------------------------------------------------------
+   Shell
+   --------------------------------------------------------------------------------- */
+
 .p5toolbar {
   display: none;
   position: fixed;
@@ -53,74 +78,69 @@
   align-items: center;
   gap: var(--p5toolbar-space-2);
   padding: var(--p5toolbar-space-2);
-  background: var(--p5toolbar-bg);
-  color: var(--p5toolbar-fg);
-  border: 1px solid var(--p5toolbar-border);
   border-radius: var(--p5toolbar-radius-lg);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  &:not([hidden]) {
+    display: flex;
+  }
+
+  /* Orientation sets the layout axis and the centering transform; position sets the
+     edge offset. */
+  &[data-orientation="vertical"] {
+    flex-direction: column;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  &[data-orientation="horizontal"] {
+    flex-direction: row;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  &[data-position="left"] {
+    left: var(--p5toolbar-space-5);
+  }
+  &[data-position="right"] {
+    right: var(--p5toolbar-space-5);
+  }
+  &[data-position="top"] {
+    top: var(--p5toolbar-space-5);
+  }
+  &[data-position="bottom"] {
+    bottom: var(--p5toolbar-space-5);
+  }
 }
 
-.p5toolbar:not([hidden]) {
-  display: flex;
-}
-
-/* Orientation + edge placement */
-
-.p5toolbar[data-orientation="vertical"] {
-  flex-direction: column;
-  top: 50%;
-  transform: translateY(-50%);
-}
-.p5toolbar[data-position="left"] {
-  left: var(--p5toolbar-space-5);
-}
-.p5toolbar[data-position="right"] {
-  right: var(--p5toolbar-space-5);
-}
-
-.p5toolbar[data-orientation="horizontal"] {
-  flex-direction: row;
-  left: 50%;
-  transform: translateX(-50%);
-}
-.p5toolbar[data-position="top"] {
-  top: var(--p5toolbar-space-5);
-}
-.p5toolbar[data-position="bottom"] {
-  bottom: var(--p5toolbar-space-5);
-}
-
-/* Widget / shell-control groups */
-
+/* Widget and shell-control groups flow along the toolbar's axis. */
 .p5toolbar__widgets,
 .p5toolbar__shell-controls {
   display: flex;
   gap: var(--p5toolbar-space-1);
-}
-.p5toolbar[data-orientation="vertical"] .p5toolbar__widgets,
-.p5toolbar[data-orientation="vertical"] .p5toolbar__shell-controls {
-  flex-direction: column;
-}
-.p5toolbar[data-orientation="horizontal"] .p5toolbar__widgets,
-.p5toolbar[data-orientation="horizontal"] .p5toolbar__shell-controls {
-  flex-direction: row;
+
+  .p5toolbar[data-orientation="vertical"] & {
+    flex-direction: column;
+  }
+  .p5toolbar[data-orientation="horizontal"] & {
+    flex-direction: row;
+  }
 }
 
 .p5toolbar__divider {
   flex-shrink: 0;
   background: var(--p5toolbar-border);
-}
-.p5toolbar[data-orientation="vertical"] .p5toolbar__divider {
-  width: 100%;
-  height: 1px;
-}
-.p5toolbar[data-orientation="horizontal"] .p5toolbar__divider {
-  width: 1px;
-  align-self: stretch;
+
+  .p5toolbar[data-orientation="vertical"] & {
+    width: 100%;
+    height: 1px;
+  }
+  .p5toolbar[data-orientation="horizontal"] & {
+    width: 1px;
+    align-self: stretch;
+  }
 }
 
-/* Buttons */
+/* ---------------------------------------------------------------------------------
+   Buttons
+   --------------------------------------------------------------------------------- */
 
 .p5toolbar__btn {
   position: relative;
@@ -135,26 +155,30 @@
   background: transparent;
   color: currentColor;
   cursor: pointer;
-}
-.p5toolbar__btn:hover {
-  background: var(--p5toolbar-hover);
-}
-.p5toolbar__btn:focus-visible {
-  outline: 2px solid var(--p5toolbar-accent);
-  outline-offset: 2px;
-}
-.p5toolbar__btn[aria-pressed="true"] {
-  background: var(--p5toolbar-active);
-}
-.p5toolbar__btn svg {
-  display: block;
-  width: var(--p5toolbar-icon-size);
-  height: var(--p5toolbar-icon-size);
+
+  &:hover {
+    background: var(--p5toolbar-hover);
+  }
+  &:focus-visible {
+    outline: 2px solid var(--p5toolbar-accent);
+    outline-offset: 2px;
+  }
+  &[aria-pressed="true"] {
+    background: var(--p5toolbar-active);
+  }
+
+  & svg {
+    display: block;
+    width: var(--p5toolbar-icon-size);
+    height: var(--p5toolbar-icon-size);
+  }
 }
 
-/* Tooltips — shown on hover/focus, positioned away from the nearest canvas edge so they
-   don't get clipped by the viewport. aria-label on the button itself covers screen
-   readers regardless of hover/focus state; the shortcut chip is purely visual. */
+/* ---------------------------------------------------------------------------------
+   Tooltips — shown on hover/focus, placed away from the nearest canvas edge so the
+   viewport doesn't clip them. The button's aria-label covers screen readers regardless;
+   the shortcut chip is purely visual.
+   --------------------------------------------------------------------------------- */
 
 .p5toolbar__tooltip {
   position: absolute;
@@ -162,75 +186,77 @@
   align-items: center;
   gap: var(--p5toolbar-space-4);
   padding: var(--p5toolbar-space-1) var(--p5toolbar-space-3);
-  border: 1px solid var(--p5toolbar-border);
   border-radius: var(--p5toolbar-radius-sm);
-  background: var(--p5toolbar-bg);
-  color: var(--p5toolbar-fg);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
   font-size: var(--p5toolbar-font-size-tooltip-label);
   line-height: 1.4;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.12s ease;
+
+  .p5toolbar__btn:hover &,
+  .p5toolbar__btn:focus-visible & {
+    opacity: 1;
+    transition-delay: var(--p5toolbar-tooltip-delay);
+  }
+
+  /* Once the first tooltip of a session has shown, [data-tooltip-warm] (set by the JS)
+     makes the rest instant — only the first hover pays the delay. */
+  .p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:hover &,
+  .p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:focus-visible & {
+    transition-delay: 0s;
+  }
+
+  .p5toolbar[data-position="left"] & {
+    left: 100%;
+    top: 50%;
+    margin-left: var(--p5toolbar-space-5);
+    transform: translateY(-50%);
+  }
+  .p5toolbar[data-position="right"] & {
+    right: 100%;
+    top: 50%;
+    margin-right: var(--p5toolbar-space-5);
+    transform: translateY(-50%);
+  }
+  .p5toolbar[data-position="top"] & {
+    top: 100%;
+    left: 50%;
+    margin-top: var(--p5toolbar-space-5);
+    transform: translateX(-50%);
+  }
+  .p5toolbar[data-position="bottom"] & {
+    bottom: 100%;
+    left: 50%;
+    margin-bottom: var(--p5toolbar-space-5);
+    transform: translateX(-50%);
+  }
 }
-.p5toolbar__tooltip-shortcut {
+
+/* Dimmed monospace chip — shared by the tooltip and the hidden-toolbar toast. */
+.p5toolbar__tooltip-shortcut,
+.p5toolbar-toast__shortcut {
   opacity: 0.55;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--p5toolbar-font-mono);
   font-size: var(--p5toolbar-font-size-tooltip-shortcut);
 }
-.p5toolbar__btn:hover .p5toolbar__tooltip,
-.p5toolbar__btn:focus-visible .p5toolbar__tooltip {
-  opacity: 1;
-  transition-delay: var(--p5toolbar-tooltip-delay);
-}
 
-/* After the first tooltip in a "session" has shown, later ones (while [data-tooltip-warm]
-   is set by JS) appear instantly — only the very first hover pays the full delay. */
-.p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:hover .p5toolbar__tooltip,
-.p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:focus-visible .p5toolbar__tooltip {
-  transition-delay: 0s;
-}
-
-.p5toolbar[data-position="left"] .p5toolbar__tooltip {
-  left: 100%;
-  top: 50%;
-  margin-left: var(--p5toolbar-space-5);
-  transform: translateY(-50%);
-}
-.p5toolbar[data-position="right"] .p5toolbar__tooltip {
-  right: 100%;
-  top: 50%;
-  margin-right: var(--p5toolbar-space-5);
-  transform: translateY(-50%);
-}
-.p5toolbar[data-position="top"] .p5toolbar__tooltip {
-  top: 100%;
-  left: 50%;
-  margin-top: var(--p5toolbar-space-5);
-  transform: translateX(-50%);
-}
-.p5toolbar[data-position="bottom"] .p5toolbar__tooltip {
-  bottom: 100%;
-  left: 50%;
-  margin-bottom: var(--p5toolbar-space-5);
-  transform: translateX(-50%);
-}
-
-/* Grid overlay widget — .p5toolbar-grid and .p5toolbar-grid-readout are independent
-   document.body children, not descendants of .p5toolbar (see the comment beside the
-   "grid" widget in p5.toolbar.js for why). --p5toolbar-grid-size is set inline by the
-   JS; the 50px here is just a fallback if that's ever missing. */
+/* ---------------------------------------------------------------------------------
+   Grid overlay — .p5toolbar-grid and .p5toolbar-grid-readout are independent
+   document.body children, not descendants of .p5toolbar (see the "grid" widget in
+   p5.toolbar.js for why). --p5toolbar-grid-size is set inline by the JS; the 50px here
+   is only a fallback.
+   --------------------------------------------------------------------------------- */
 
 .p5toolbar-grid {
   position: fixed;
   pointer-events: none;
   mix-blend-mode: difference;
   --p5toolbar-grid-line: #ffffff;
-  /* The line sits at the end of each repeat unit, not the start, so no line lands at 0
-     and the top/left edges stay clear. Right/bottom depend on the canvas's actual
-     width/height, which is arbitrary, so clip-path below is what actually guarantees
-     no line touches any of the four edges. */
+
+  /* Each line sits at the end of its repeat unit, not the start, so none lands at 0 and
+     the top/left edges stay clear. The right/bottom edges depend on the canvas's actual
+     size, which is arbitrary, so clip-path is what guarantees no line touches an edge. */
   background-image: repeating-linear-gradient(
       to right,
       transparent 0,
@@ -245,26 +271,22 @@
       var(--p5toolbar-grid-line) calc(var(--p5toolbar-grid-size, 50px) - 1px),
       var(--p5toolbar-grid-line) var(--p5toolbar-grid-size, 50px)
     );
-  /* Lines are 1px thick, so a 1px inset clips away exactly (and only) a line that would
-     otherwise sit flush against an edge, on all four sides, regardless of canvas size. */
+  /* Lines are 1px thick, so a 1px inset clips away exactly a line flush against an edge,
+     on all four sides, at any canvas size. */
   clip-path: inset(1px);
   opacity: 0.65;
-}
-.p5toolbar-grid[data-inverted="true"] {
-  /* Mid-gray, not black — for a fixed line color S blended via difference, contrast is
-     a constant S wherever the backdrop >= S, dropping to 0 only at backdrop = S/2.
-     White (S=255) is blind at ~127.5, the case this toggle exists for; black (S=0) is
-     blind everywhere (a no-op). S=128 keeps strong, ~flat contrast almost everywhere,
-     with its blind spot pushed down to ~64 instead. */
-  --p5toolbar-grid-line: #808080;
+
+  &[data-inverted="true"] {
+    /* Mid-gray, not black. For a fixed line color S blended via difference, contrast is
+       a constant S wherever the backdrop >= S, dropping to 0 only at backdrop = S/2.
+       White (S=255) is blind at ~127.5 — the case this toggle exists for; black (S=0)
+       is blind everywhere (a no-op). S=128 holds strong, near-flat contrast almost
+       everywhere, with its blind spot pushed down to ~64. */
+    --p5toolbar-grid-line: #808080;
+  }
 }
 
 .p5toolbar-grid-readout {
-  /* Colors and the spacing scale come from :root (see the top of this file) — this
-     isn't a descendant of .p5toolbar, but inherits them anyway since they're defined
-     that high up. font-size is a literal on purpose: this is a glanced-at live readout,
-     not a compact hover tooltip, so it doesn't reuse --p5toolbar-font-size-tooltip-*
-     (sized for tooltips, not a readout this size). */
   position: fixed;
   transform: translate(-50%, -50%);
   z-index: 1;
@@ -273,18 +295,17 @@
   gap: var(--p5toolbar-space-4);
   padding: var(--p5toolbar-space-1) var(--p5toolbar-space-1) var(--p5toolbar-space-1)
     var(--p5toolbar-space-4);
-  border: 1px solid var(--p5toolbar-border);
   border-radius: 999px;
-  background: var(--p5toolbar-bg);
-  color: var(--p5toolbar-fg);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* A literal, deliberately: this is a glanced-at live readout, not a compact hover
+     tooltip, so it doesn't reuse --p5toolbar-font-size-tooltip-*. */
   font-size: 14px;
   white-space: nowrap;
 }
+
 .p5toolbar-grid-readout__coords {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--p5toolbar-font-mono);
 }
+
 .p5toolbar-grid-readout__invert {
   display: inline-flex;
   align-items: center;
@@ -297,25 +318,28 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
-}
-.p5toolbar-grid-readout__invert svg {
-  display: block;
-  width: 14px;
-  height: 14px;
-}
-.p5toolbar-grid-readout__invert:hover {
-  background: var(--p5toolbar-hover);
-}
-.p5toolbar-grid-readout__invert[aria-pressed="true"] {
-  background: var(--p5toolbar-fg);
-  color: var(--p5toolbar-bg);
+
+  & svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+  }
+  &:hover {
+    background: var(--p5toolbar-hover);
+  }
+  &[aria-pressed="true"] {
+    background: var(--p5toolbar-fg);
+    color: var(--p5toolbar-bg);
+  }
 }
 
-/* Hidden-toolbar toast — a short-lived notice shown when the toolbar loads hidden (see
-   startToolbar in p5.toolbar.js). Fixed at top-centre regardless of where the toolbar
-   sits: it's a notification, so a predictable spot beats tracking the toolbar's edge.
-   Same surface treatment as the shell and the grid readout; pointer-events are off so
-   it never intercepts a canvas click during its brief life. */
+/* ---------------------------------------------------------------------------------
+   Hidden-toolbar toast — a short-lived notice shown when the toolbar loads hidden (see
+   startToolbar in p5.toolbar.js). Fixed at top-centre: it's a notification, so a
+   predictable spot beats tracking the toolbar's edge. pointer-events are off so it
+   never intercepts a canvas click during its brief life.
+   --------------------------------------------------------------------------------- */
+
 .p5toolbar-toast {
   position: fixed;
   top: var(--p5toolbar-space-5);
@@ -324,29 +348,20 @@
   z-index: 2147483647;
   max-width: 240px;
   padding: var(--p5toolbar-space-3) var(--p5toolbar-space-4);
-  border: 1px solid var(--p5toolbar-border);
   border-radius: var(--p5toolbar-radius-lg);
-  background: var(--p5toolbar-bg);
-  color: var(--p5toolbar-fg);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: var(--p5toolbar-font-size-tooltip-label);
   line-height: 1.4;
   text-align: center;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.2s ease;
+
+  &[data-shown="true"] {
+    opacity: 1;
+  }
 }
-.p5toolbar-toast[data-shown="true"] {
-  opacity: 1;
-}
+
 .p5toolbar-toast__title {
   display: block;
   font-size: 1.05em; /* a touch above the toast's body text */
-}
-/* Same treatment as .p5toolbar__tooltip-shortcut — a dimmed monospace chip. */
-.p5toolbar-toast__shortcut {
-  opacity: 0.55;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: var(--p5toolbar-font-size-tooltip-shortcut);
 }
