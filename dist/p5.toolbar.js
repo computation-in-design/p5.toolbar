@@ -1,5 +1,5 @@
 /*!
- * p5.toolbar — v0.3.3
+ * p5.toolbar — v0.3.4
  * A floating toolbar addon for p5.js global-mode sketches. See AGENTS.md for the
  * conventions this file follows (global-mode access, single-file, cursor-resolver, etc).
  */
