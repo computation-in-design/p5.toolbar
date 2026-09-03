@@ -324,6 +324,7 @@
     state.visible = visible;
     if (visible) {
       els.root.removeAttribute("hidden");
+      dismissHiddenToast(); // the toolbar is on screen now — the notice is moot
     } else {
       els.root.setAttribute("hidden", "");
     }
@@ -823,6 +824,103 @@
   });
 
   // ---------------------------------------------------------------------------------
+  // Hidden-toolbar toast — a visual counterpart to the console.info in startToolbar,
+  // for when the dev console isn't open. Shown only if the toolbar loads hidden AND no
+  // toolbar has initialised in the last TOAST_MIN_GAP_MS, so a quick run / re-run
+  // cycle (where the student plainly knows it's off) stays quiet. Styling and its
+  // fixed top-centre placement come from .p5toolbar-toast in p5.toolbar.css.
+  // ---------------------------------------------------------------------------------
+
+  const TOAST_MIN_GAP_MS = 15 * 60 * 1000;
+  const TOAST_VISIBLE_MS = 7500;
+  const TOAST_FADE_MS = 200; // keep in sync with the opacity transition in the CSS
+
+  let toastEl = null;
+  let toastHideTimer = null;
+
+  function showHiddenToast() {
+    dismissHiddenToast();
+
+    const el = document.createElement("div");
+    el.className = "p5toolbar-toast";
+    el.setAttribute("role", "status");
+
+    const title = document.createElement("strong");
+    title.className = "p5toolbar-toast__title";
+    title.textContent = "p5.toolbar is hidden";
+
+    const shortcut = document.createElement("span");
+    shortcut.className = "p5toolbar-toast__shortcut";
+    shortcut.textContent = formatShortcut(HIDE_SHORTCUT);
+
+    el.append(title, "Press ", shortcut, " to show it");
+    document.body.appendChild(el);
+    toastEl = el;
+
+    void el.offsetWidth; // commit the opacity:0 start state so the next line transitions
+    el.dataset.shown = "true";
+
+    toastHideTimer = setTimeout(dismissHiddenToast, TOAST_VISIBLE_MS);
+  }
+
+  function dismissHiddenToast() {
+    if (toastHideTimer) {
+      clearTimeout(toastHideTimer);
+      toastHideTimer = null;
+    }
+    if (!toastEl) return;
+    const el = toastEl;
+    toastEl = null;
+    el.dataset.shown = "false";
+    setTimeout(function () {
+      el.remove();
+    }, TOAST_FADE_MS);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Startup — runs once the canvas exists (see init below). Builds the shell, restores
+  // persisted chrome state, renders the widgets, and binds the global shortcut.
+  // ---------------------------------------------------------------------------------
+
+  function startToolbar(canvas) {
+    canvasEl = canvas;
+    buildShell();
+
+    const savedPosition = storage.get(null, "position", state.config.position);
+    setPosition(
+      POSITIONS.indexOf(savedPosition) !== -1 ? savedPosition : state.config.position,
+      false
+    );
+
+    applyTheme();
+    bindThemeMediaQuery();
+
+    const savedVisible = storage.get(null, "visible", true);
+    setVisible(savedVisible, false);
+
+    // "lastInit" is global (every sketch, every run) and only gates the toast below.
+    const now = Date.now();
+    const lastInit = storage.get(null, "lastInit", 0);
+    storage.set(null, "lastInit", now);
+
+    if (!savedVisible) {
+      // Logged on every run so a student who forgot the toolbar is toggled off
+      // (visibility persists globally) isn't left wondering why it never appeared.
+      console.info(
+        "[p5.toolbar] The toolbar is hidden. Press " +
+          formatShortcut(HIDE_SHORTCUT) +
+          " to show it."
+      );
+      if (now - lastInit >= TOAST_MIN_GAP_MS) {
+        showHiddenToast();
+      }
+    }
+
+    renderWidgets();
+    bindShortcut();
+  }
+
+  // ---------------------------------------------------------------------------------
   // Public API
   // ---------------------------------------------------------------------------------
 
@@ -835,26 +933,7 @@
     };
 
     injectStylesheet();
-
-    waitForCanvas(function (canvas) {
-      canvasEl = canvas;
-      buildShell();
-
-      const savedPosition = storage.get(null, "position", state.config.position);
-      setPosition(
-        POSITIONS.indexOf(savedPosition) !== -1 ? savedPosition : state.config.position,
-        false
-      );
-
-      applyTheme();
-      bindThemeMediaQuery();
-
-      const savedVisible = storage.get(null, "visible", true);
-      setVisible(savedVisible, false);
-
-      renderWidgets();
-      bindShortcut();
-    });
+    waitForCanvas(startToolbar);
   }
 
   window.P5Toolbar = {

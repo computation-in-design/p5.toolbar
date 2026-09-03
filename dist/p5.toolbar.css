@@ -310,3 +310,43 @@
   background: var(--p5toolbar-fg);
   color: var(--p5toolbar-bg);
 }
+
+/* Hidden-toolbar toast — a short-lived notice shown when the toolbar loads hidden (see
+   startToolbar in p5.toolbar.js). Fixed at top-centre regardless of where the toolbar
+   sits: it's a notification, so a predictable spot beats tracking the toolbar's edge.
+   Same surface treatment as the shell and the grid readout; pointer-events are off so
+   it never intercepts a canvas click during its brief life. */
+.p5toolbar-toast {
+  position: fixed;
+  top: var(--p5toolbar-space-5);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  max-width: 240px;
+  padding: var(--p5toolbar-space-3) var(--p5toolbar-space-4);
+  border: 1px solid var(--p5toolbar-border);
+  border-radius: var(--p5toolbar-radius-lg);
+  background: var(--p5toolbar-bg);
+  color: var(--p5toolbar-fg);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: var(--p5toolbar-font-size-tooltip-label);
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.p5toolbar-toast[data-shown="true"] {
+  opacity: 1;
+}
+.p5toolbar-toast__title {
+  display: block;
+  font-size: 1.05em; /* a touch above the toast's body text */
+}
+/* Same treatment as .p5toolbar__tooltip-shortcut — a dimmed monospace chip. */
+.p5toolbar-toast__shortcut {
+  opacity: 0.55;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: var(--p5toolbar-font-size-tooltip-shortcut);
+}

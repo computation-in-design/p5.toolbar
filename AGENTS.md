@@ -69,7 +69,13 @@ jsDelivr, no npm package, no bundler.
   global (`storage.get/set(null, ...)`), deliberately *not* namespaced per sketch, since
   it's a personal preference about the toolbar chrome itself — a student's "I keep it on
   the right, hidden by default" habit should follow them across every sketch, not reset
-  per project.
+  per project. The global bucket also holds `lastInit` (a timestamp, every run) — it
+  only gates how often the "toolbar is hidden" toast reappears.
+
+- **When the toolbar loads hidden it says so** — a `console.info` every run, plus a
+  brief on-canvas toast (`.p5toolbar-toast`, fixed at top-centre) when no
+  run has happened in the last 15 minutes, so a forgotten toggle-off is recoverable
+  without the dev console open. The toast is `pointer-events: none` and self-dismisses.
 
 ## Widget contract
 
@@ -110,6 +116,46 @@ Every widget — built-in or third-party — is a plain object passed to
   toggle by other means (`hideCursor`: with the cursor hidden, clicking a small button to
   turn it back on is itself hard to aim) or expected to be toggled often enough during a
   session that reaching for the mouse each time is real friction (`grid`: `Shift+G`).
+
+### Third-party widgets
+
+A widget can live entirely outside this repo — nothing in `dist/p5.toolbar.js` needs to
+change. The built-ins register through the same `P5Toolbar.registerWidget()` call and get
+no special treatment. A widget script just needs `P5Toolbar` on `window` first, and must
+register before `P5Toolbar.init()` runs:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/computation-in-design/p5.toolbar@latest/dist/p5.toolbar.js"></script>
+<script src="freeze-widget.js"></script>
+<script>
+  P5Toolbar.init({ widgets: ["grid", "freeze", "hideCursor"] });
+</script>
+```
+
+```js
+// freeze-widget.js — pauses/resumes the draw loop
+P5Toolbar.registerWidget("freeze", {
+  icon: {
+    off: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>',
+    on: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 5v14l11-7z"/></svg>',
+  },
+  label: { off: "Freeze sketch", on: "Resume sketch" },
+  type: "toggle",
+  persist: true,
+  shortcut: { code: "KeyF", shiftKey: true },
+  onToggle(active, ctx) {
+    if (active) window.noLoop();
+    else window.loop();
+  },
+});
+```
+
+- `id` is the string used in the `widgets` array — must match. An unregistered name is
+  skipped with a `console.warn`, not a throw.
+- `icon` must be an `<svg>…</svg>` string. The shell does `button.querySelector("svg")`
+  on every toggle, so an icon with no `<svg>` root throws.
+- Read p5 globals off `window` (`window.noLoop`, `window.mouseX`, …), same as the
+  built-ins — never assume a `p5` instance.
 
 ## Repo layout
 
