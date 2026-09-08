@@ -4,7 +4,7 @@ A lightweight floating toolbar for p5.js sketches, designed for teaching — esp
 the p5.js Web Editor — with a simple plugin API for adding your own tools. CDN-only, no
 setup required.
 
-Built-in tools: grid overlay, hide cursor.
+Built-in tools: grid overlay, hide cursor, save canvas.
 
 ## Usage
 
@@ -29,7 +29,7 @@ version, replace `@latest` with a tag, e.g. `@0.3.1`.
 ```js
 P5Toolbar.init({
   position: "left", // "left" | "top" | "right" | "bottom"
-  widgets: ["grid", "hideCursor"], // which tools to show, in order
+  widgets: ["grid", "hideCursor", "saveCanvas"], // which tools to show, in order
   sketchName: "week5-perlin-noise", // optional — see below
   friendly: true, // default; set false to log setup problems for debugging
 });
@@ -58,6 +58,16 @@ P5Toolbar.init({ sketchName: "week5-perlin-noise" });
 Use a stable, unique string per sketch — the same name next session restores that
 sketch's state. There's no reliable way to derive one automatically (the preview URL
 changes the moment someone duplicates the sketch), so it's a manual choice.
+
+## Built-in tools
+
+- **`grid`** — a coordinate grid over the canvas with a live mouse-position readout.
+  Toggle with `Shift+G`. Remembers its on/off and contrast state per sketch.
+- **`hideCursor`** — hides the mouse cursor over the canvas. Toggle with `Shift+C`.
+- **`saveCanvas`** — downloads the canvas as a JPG named
+  `{sketchName}_{YYYY-MM-DD_HH-MM-SS}.jpg` (or `sketch_…` with no `sketchName`). JPG has
+  no transparency — a transparent canvas exports with a black background; call p5's
+  `saveCanvas()` yourself if you need a PNG.
 
 ## Adding your own tools
 

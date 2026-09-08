@@ -88,6 +88,23 @@ jsDelivr, no npm package, no bundler.
   run has happened in the last 15 minutes, so a forgotten toggle-off is recoverable
   without the dev console open. The toast is `pointer-events: none` and self-dismisses.
 
+- **The toast is a shared primitive** — `showToast(content, visibleMs, variant)` /
+  `dismissToast()` in the "Toast" section. One shows at a time (a new one replaces the
+  current). Both the hidden-toolbar notice and the `saveCanvas` confirmation go through
+  it; anything else needing a transient on-canvas message should too, rather than
+  hand-rolling another fixed element. It sits at top-centre, and when the toolbar is on
+  the top edge `showToast` offsets it below the toolbar so they don't overlap. The base
+  toast wraps within a fixed `max-width` (`.p5toolbar-toast`); `variant` adds a
+  `.p5toolbar-toast--{variant}` class, and `"wide"` — the only one — drops the wrap for a
+  message that must stay on one line. A no-wrap toast is only safe with length-bounded
+  content (the `saveCanvas` filename is middle-truncated first).
+
+- **Built-in widgets: `grid`, `hideCursor`, `saveCanvas`** — all three ship in the
+  default `widgets` array. `saveCanvas` is the only `type: "action"` one (fires once, no
+  pressed state); it calls p5's own `window.saveCanvas(name, "jpg")` — JPG only, filename
+  `{sketchName|"sketch"}_{YYYY-MM-DD_HH-MM-SS}` — and confirms with a `log.info` (full
+  name) plus a one-line toast (name middle-truncated, monospace).
+
 - **The console stays quiet in normal use.** All output goes through the `log` helper
   (prefixes `[p5.toolbar]`), and the level is chosen by severity, not habit: `log.error`
   only when the toolbar genuinely can't run (p5.js missing — `init` bails); `log.warn`

@@ -47,6 +47,7 @@
     hide: "Hide toolbar",
     hideCursor: { off: "Hide cursor", on: "Show cursor" },
     grid: { off: "Show grid", on: "Hide grid" },
+    saveCanvas: "Save canvas as JPG",
   };
 
   // ---------------------------------------------------------------------------------
@@ -114,6 +115,17 @@
       '<path d="M12 3V21M3 12H21" stroke="var(--p5toolbar-bg)" stroke-width="2.5" stroke-linecap="square"></path>' +
       "</svg>",
   };
+
+  // A download-tray glyph for the save-canvas widget — a long down arrow into an open
+  // tray. The tray is the lower band of the grid icon's frame: same 3..21 width, same
+  // rx=3 corners, same y=21 baseline, so it lines up with the framed icons beside it.
+  ICONS.save =
+    "<svg " +
+    ICON_ATTRS +
+    ">" +
+    '<path d="M3 15V18A3 3 0 0 0 6 21H18A3 3 0 0 0 21 18V15"></path>' +
+    '<path d="M12 3V14M7.5 9.5L12 14L16.5 9.5"></path>' +
+    "</svg>";
 
   // Outlined circle, left half filled — one arc closed by the vertical diameter.
   ICONS.invert =
@@ -203,6 +215,15 @@
   function clearTimer(id) {
     if (id) clearTimeout(id);
     return null;
+  }
+
+  // Shorten a string to a budget while keeping both ends — "sketch_2026-…_14-30-05.jpg".
+  // Returned unchanged if it already fits.
+  function middleTruncate(str, max) {
+    if (str.length <= max) return str;
+    const keep = max - 1;
+    const head = Math.ceil(keep / 2);
+    return str.slice(0, head) + "…" + str.slice(str.length - (keep - head));
   }
 
   // ---------------------------------------------------------------------------------
@@ -404,7 +425,7 @@
     state.visible = visible;
     if (visible) {
       els.root.removeAttribute("hidden");
-      dismissHiddenToast(); // the toolbar is on screen — the "it's hidden" notice is moot
+      dismissToast(); // the toolbar is on screen — the "it's hidden" notice is moot
     } else {
       els.root.setAttribute("hidden", "");
     }
@@ -596,6 +617,58 @@
     }
 
     return tooltip;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Toast — a brief top-centre notice on the canvas (.p5toolbar-toast in the CSS owns
+  // width and the fade; showToast drops the top offset below a top-positioned toolbar so
+  // the two don't overlap). One at a time: a new toast replaces whatever's showing.
+  // pointer-events are off, so it never eats a canvas click during its short life. The
+  // default toast wraps within a fixed max-width; a caller that needs a single line
+  // passes a variant (see below).
+  // ---------------------------------------------------------------------------------
+
+  const TOAST_FADE_MS = 200; // keep in sync with the opacity transition in the CSS
+
+  let toastEl = null;
+  let toastHideTimer = null;
+
+  // content is a string, or an array of strings/nodes to append (for a toast with inline
+  // markup, e.g. the shortcut chip). variant adds a p5toolbar-toast--{variant} class;
+  // "wide" is the only one — it drops the wrap so the toast stays on a single line.
+  function showToast(content, visibleMs, variant) {
+    dismissToast();
+
+    const el = document.createElement("div");
+    el.className = "p5toolbar-toast" + (variant ? " p5toolbar-toast--" + variant : "");
+    el.setAttribute("role", "status");
+    if (Array.isArray(content)) el.append.apply(el, content);
+    else el.textContent = content;
+
+    document.body.appendChild(el);
+    toastEl = el;
+
+    // The toast and a top-edge toolbar both sit at top-centre — when the toolbar is
+    // there and shown, place the toast just below it instead of on top of it.
+    if (state.visible && state.position === "top" && els.root) {
+      el.style.top = els.root.getBoundingClientRect().bottom + 8 + "px";
+    }
+
+    void el.offsetWidth; // commit the opacity:0 start state so the next line transitions
+    el.dataset.shown = "true";
+
+    toastHideTimer = setTimeout(dismissToast, visibleMs);
+  }
+
+  function dismissToast() {
+    toastHideTimer = clearTimer(toastHideTimer);
+    if (!toastEl) return;
+    const el = toastEl;
+    toastEl = null;
+    el.dataset.shown = "false";
+    setTimeout(function () {
+      el.remove();
+    }, TOAST_FADE_MS);
   }
 
   // ---------------------------------------------------------------------------------
@@ -922,27 +995,69 @@
   });
 
   // ---------------------------------------------------------------------------------
+  // Built-in widget: save canvas — exports the sketch's canvas as a JPG. The first
+  // action-type built-in: it fires once per click, with no on/off state.
+  //
+  // JPG has no alpha channel, so a transparent canvas flattens to black on export —
+  // documented for callers who need a PNG to reach for saveCanvas() themselves.
+  // ---------------------------------------------------------------------------------
+
+  const SAVE_TOAST_VISIBLE_MS = 3000;
+  // The confirmation toast shows the filename on one line (the "wide" variant drops the
+  // wrap), so the name is middle-truncated to this many characters to keep the toast a
+  // sane width. The log line carries the full name.
+  const SAVE_TOAST_NAME_MAX = 34;
+
+  // {stem}_{YYYY-MM-DD_HH-MM-SS} in local time. stem is the sketchName, or "sketch".
+  function saveCanvasFilename(sketchName) {
+    const d = new Date();
+    const pad = function (n) {
+      return String(n).padStart(2, "0");
+    };
+    const stamp =
+      d.getFullYear() +
+      "-" + pad(d.getMonth() + 1) +
+      "-" + pad(d.getDate()) +
+      "_" + pad(d.getHours()) +
+      "-" + pad(d.getMinutes()) +
+      "-" + pad(d.getSeconds());
+    return (sketchName || "sketch") + "_" + stamp;
+  }
+
+  registerWidget("saveCanvas", {
+    icon: ICONS.save,
+    label: LABELS.saveCanvas,
+    type: "action",
+    onActivate: function (ctx) {
+      // p5's own saveCanvas (synchronous in 2.x) with no canvas argument targets the
+      // main canvas and downloads exactly `name + ".jpg"` — its blob/encode/anchor path
+      // is the maintained one, so this doesn't reimplement it. The grid overlay is a
+      // separate blended DOM layer, not canvas pixels, so it's absent from the export.
+      const name = saveCanvasFilename(ctx.sketchName);
+      window.saveCanvas(name, "jpg");
+
+      const file = name + ".jpg";
+      log.info("Saved " + file);
+
+      // Same filename in the toast — monospace, truncated to one line ("wide").
+      const nameEl = document.createElement("span");
+      nameEl.className = "p5toolbar-toast__name";
+      nameEl.textContent = middleTruncate(file, SAVE_TOAST_NAME_MAX);
+      showToast(["Saved ", nameEl], SAVE_TOAST_VISIBLE_MS, "wide");
+    },
+  });
+
+  // ---------------------------------------------------------------------------------
   // Hidden-toolbar toast — a visual counterpart to the log.info in startToolbar, for
   // when the dev console isn't open. Shown only if the toolbar loads hidden AND no
   // toolbar has initialised in the last TOAST_MIN_GAP_MS, so a quick run / re-run cycle
-  // (where the user plainly knows it's off) stays quiet. Styling and its fixed
-  // top-centre placement come from .p5toolbar-toast in p5.toolbar.css.
+  // (where the user plainly knows it's off) stays quiet.
   // ---------------------------------------------------------------------------------
 
   const TOAST_MIN_GAP_MS = 15 * 60 * 1000;
-  const TOAST_VISIBLE_MS = 7500;
-  const TOAST_FADE_MS = 200; // keep in sync with the opacity transition in the CSS
-
-  let toastEl = null;
-  let toastHideTimer = null;
+  const HIDDEN_TOAST_VISIBLE_MS = 7500;
 
   function showHiddenToast() {
-    dismissHiddenToast();
-
-    const el = document.createElement("div");
-    el.className = "p5toolbar-toast";
-    el.setAttribute("role", "status");
-
     const title = document.createElement("strong");
     title.className = "p5toolbar-toast__title";
     title.textContent = "p5.toolbar is hidden";
@@ -951,25 +1066,7 @@
     shortcut.className = "p5toolbar-toast__shortcut";
     shortcut.textContent = formatShortcut(HIDE_SHORTCUT);
 
-    el.append(title, "Press ", shortcut, " to show it");
-    document.body.appendChild(el);
-    toastEl = el;
-
-    void el.offsetWidth; // commit the opacity:0 start state so the next line transitions
-    el.dataset.shown = "true";
-
-    toastHideTimer = setTimeout(dismissHiddenToast, TOAST_VISIBLE_MS);
-  }
-
-  function dismissHiddenToast() {
-    toastHideTimer = clearTimer(toastHideTimer);
-    if (!toastEl) return;
-    const el = toastEl;
-    toastEl = null;
-    el.dataset.shown = "false";
-    setTimeout(function () {
-      el.remove();
-    }, TOAST_FADE_MS);
+    showToast([title, "Press ", shortcut, " to show it"], HIDDEN_TOAST_VISIBLE_MS);
   }
 
   // ---------------------------------------------------------------------------------
@@ -1046,7 +1143,7 @@
     config = config || {};
     state.config = {
       position: config.position || "left",
-      widgets: config.widgets || ["grid", "hideCursor"],
+      widgets: config.widgets || ["grid", "hideCursor", "saveCanvas"],
       sketchName: config.sketchName || null,
       // Friendly by default: stay quiet about failures a student can't fix. Set false to
       // also log those (localStorage blocked, stylesheet missing) via log.debug().

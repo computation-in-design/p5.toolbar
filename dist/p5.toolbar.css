@@ -334,10 +334,11 @@
 }
 
 /* ---------------------------------------------------------------------------------
-   Hidden-toolbar toast — a short-lived notice shown when the toolbar loads hidden (see
-   startToolbar in p5.toolbar.js). Fixed at top-centre: it's a notification, so a
+   Toast — a short-lived top-centre notice (toolbar loaded hidden; canvas saved). See
+   the "Toast" section in p5.toolbar.js. Fixed at top-centre: it's a notification, so a
    predictable spot beats tracking the toolbar's edge. pointer-events are off so it
-   never intercepts a canvas click during its brief life.
+   never intercepts a canvas click during its brief life. The base toast wraps within
+   max-width; .p5toolbar-toast--wide is for a message that must stay on one line.
    --------------------------------------------------------------------------------- */
 
 .p5toolbar-toast {
@@ -346,7 +347,7 @@
   left: 50%;
   transform: translateX(-50%);
   z-index: 2147483647;
-  max-width: 240px;
+  max-width: 240px; /* wrap width for multi-line notices, e.g. the hidden-toolbar toast */
   padding: var(--p5toolbar-space-3) var(--p5toolbar-space-4);
   border-radius: var(--p5toolbar-radius-lg);
   font-size: var(--p5toolbar-font-size-tooltip-label);
@@ -359,6 +360,21 @@
   &[data-shown="true"] {
     opacity: 1;
   }
+}
+
+/* The save-canvas toast holds a filename and must stay on one line. The name is
+   length-capped in the JS (SAVE_TOAST_NAME_MAX), so dropping the wrap here can't push
+   the toast off-screen. */
+.p5toolbar-toast--wide {
+  max-width: none;
+  white-space: nowrap;
+}
+
+/* Filename in the save-canvas toast — monospace so the date/time digit groups align. */
+.p5toolbar-toast__name {
+  margin-left: 0.35em;
+  font-family: var(--p5toolbar-font-mono);
+  opacity: 0.75;
 }
 
 .p5toolbar-toast__title {
