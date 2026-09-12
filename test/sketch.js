@@ -10,6 +10,10 @@ function draw() {
 
   if (mouseIsPressed) {
     bg = color(255, 255, 0);
+
+    noStroke();
+    fill("crimson");
+    ellipse(mouseX, mouseY, 100);
   } else {
     bg = color(220);
   }

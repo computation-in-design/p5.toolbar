@@ -8,6 +8,7 @@ working_files/
 # Editors
 .vscode/
 .nova/
+.claude/
 
 # macOS
 .DS_Store

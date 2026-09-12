@@ -48,6 +48,7 @@
     hideCursor: { off: "Hide cursor", on: "Show cursor" },
     grid: { off: "Show grid", on: "Hide grid" },
     saveCanvas: "Save canvas as JPG",
+    fullscreen: { off: "Enter fullscreen", on: "Exit fullscreen" },
   };
 
   // ---------------------------------------------------------------------------------
@@ -126,6 +127,20 @@
     '<path d="M3 15V18A3 3 0 0 0 6 21H18A3 3 0 0 0 21 18V15"></path>' +
     '<path d="M12 3V14M7.5 9.5L12 14L16.5 9.5"></path>' +
     "</svg>";
+
+  // Corner brackets. "off" sits at the frame's corners, open toward the interior
+  // (implying expand); "on" pulls the same brackets to the centre, open toward their
+  // own corner (implying contract) — one visual language, reversed.
+  ICONS.fullscreen = {
+    off:
+      "<svg " +
+      ICON_ATTRS +
+      '><path d="M3 8V3H8M21 8V3H16M3 16V21H8M21 16V21H16"></path></svg>',
+    on:
+      "<svg " +
+      ICON_ATTRS +
+      '><path d="M8 3V8H3M16 3V8H21M8 21V16H3M16 21V16H21"></path></svg>',
+  };
 
   // Outlined circle, left half filled — one arc closed by the vertical diameter.
   ICONS.invert =
@@ -224,6 +239,23 @@
     const keep = max - 1;
     const head = Math.ceil(keep / 2);
     return str.slice(0, head) + "…" + str.slice(str.length - (keep - head));
+  }
+
+  // Resize the canvas visually via CSS width/height — never a transform, and never
+  // resizeCanvas(). p5 computes mouseX/mouseY from canvas.scrollWidth against its own
+  // logical width; a transform changes what's rendered without changing that ratio, so
+  // it would desync every click from where it visually lands (see AGENTS.md). scale 1
+  // restores the canvas to its natural, window.width-based size.
+  function setCanvasScale(canvas, scale) {
+    canvas.style.width = window.width * scale + "px";
+    canvas.style.height = window.height * scale + "px";
+  }
+
+  // The inverse of setCanvasScale: the canvas's current on-screen size relative to its
+  // natural one, 1 at natural size. For anything measured in screen pixels rather than
+  // sketch coordinates — the grid's line spacing, say — to stay meaningful at any scale.
+  function currentCanvasScale(canvas) {
+    return canvas.getBoundingClientRect().width / window.width;
   }
 
   // ---------------------------------------------------------------------------------
@@ -749,7 +781,17 @@
         }
       },
     });
-    if (isToggle) renderToggle(btn, def, active);
+    if (isToggle) {
+      renderToggle(btn, def, active);
+      // For state that changes from outside a click — a browser event reverting
+      // fullscreen on Esc, say. Updates the button exactly as a click would, without
+      // re-running onToggle (the caller already handled the actual side effect).
+      ctx.setActive = function (newActive) {
+        active = newActive;
+        renderToggle(btn, def, active);
+        if (persist) ctx.storage.set("active", active);
+      };
+    }
 
     if (def.shortcut) {
       window.addEventListener("keydown", function (e) {
@@ -760,6 +802,13 @@
 
     widgetButtons[id] = btn;
     els.widgets.appendChild(btn);
+
+    // Runs once, right after the button exists, for any widget type — before the
+    // persisted-toggle replay below, and regardless of whether one applies. Toggle
+    // widgets get simple on/off persistence for free via persist:true; onRestore is for
+    // a widget with its own storage shape (e.g. a value with an expiry) to apply it at
+    // startup rather than waiting for a first click.
+    if (def.onRestore) def.onRestore(ctx);
 
     // Replay a persisted "on" state. Safe inline: widgets render in config order, so any
     // earlier widget this one's setCursor would click off already exists, and later ones
@@ -893,6 +942,13 @@
     gridOverlayEl.style.top = rect.top + "px";
     gridOverlayEl.style.width = rect.width + "px";
     gridOverlayEl.style.height = rect.height + "px";
+    // GRID_SIZE_PX is a sketch-coordinate distance, not a screen-pixel one — scale it
+    // by the canvas's current on-screen size so a cell means the same sketch distance
+    // whether the canvas is at its natural size or resized (fullscreen's fit).
+    gridOverlayEl.style.setProperty(
+      "--p5toolbar-grid-size",
+      GRID_SIZE_PX * currentCanvasScale(canvasEl) + "px"
+    );
     gridReadoutEl.style.left = rect.left + rect.width / 2 + "px";
     gridReadoutEl.style.top = rect.top + rect.height / 2 + "px";
   }
@@ -924,7 +980,6 @@
     gridOverlayEl = document.createElement("div");
     gridOverlayEl.className = "p5toolbar-grid";
     gridOverlayEl.dataset.inverted = String(gridInverted);
-    gridOverlayEl.style.setProperty("--p5toolbar-grid-size", GRID_SIZE_PX + "px");
 
     gridReadoutEl = document.createElement("div");
     gridReadoutEl.className = "p5toolbar-grid-readout";
@@ -1048,6 +1103,106 @@
   });
 
   // ---------------------------------------------------------------------------------
+  // Built-in widget: fullscreen — toggles the page (not the canvas alone) into
+  // fullscreen via p5's own fullscreen(), targeting document.documentElement, so the
+  // toolbar (a sibling of the canvas, not a descendant) stays visible and interactive.
+  // A host that blocks fullscreen (a sandboxed preview iframe with no allow-fullscreen)
+  // degrades to a friendly log line rather than a stuck button.
+  // ---------------------------------------------------------------------------------
+
+  // A sketch with its own windowResized() already reacts to the native resize event
+  // that entering/exiting fullscreen fires, so it's left to handle its own canvas size;
+  // only a sketch without one gets an aspect-preserving fit, so it isn't left tiny in
+  // the middle of the screen.
+  function hasOwnWindowResized() {
+    return typeof window.windowResized === "function";
+  }
+
+  // Reads --p5toolbar-fullscreen-margin from the CSS so this can't drift from the
+  // actual gutter — change it in p5.toolbar.css only.
+  function fullscreenFitMarginPx() {
+    const raw = getComputedStyle(els.root).getPropertyValue("--p5toolbar-fullscreen-margin");
+    const value = parseFloat(raw);
+    return isNaN(value) ? 80 : value; // stylesheet not loaded yet or property missing
+  }
+
+  function fullscreenFitScale() {
+    const margin = fullscreenFitMarginPx() * 2;
+    const availWidth = window.innerWidth - margin;
+    const availHeight = window.innerHeight - margin;
+    return Math.min(availWidth / window.width, availHeight / window.height);
+  }
+
+  let fullscreenCtx = null; // captured via onRestore, used by the listener below
+  let fullscreenPrevBg = null; // <html>'s inline background before we touched it
+  // Guards enter/exit so each only applies once per real transition — a duplicate
+  // "entered" fullscreenchange with no exit between would otherwise recapture
+  // fullscreenPrevBg as our own "black" and permanently lose the real original.
+  let fullscreenLookActive = false;
+
+  // Black behind the canvas, covering the fit's letterboxing (or a self-resizing
+  // sketch's own) regardless of the windowResized() branch below. A snap, not a
+  // transition — see AGENTS.md for why.
+  function enterFullscreenLook() {
+    if (fullscreenLookActive) return;
+    fullscreenLookActive = true;
+    fullscreenPrevBg = document.documentElement.style.backgroundColor;
+    document.documentElement.style.backgroundColor = "black";
+
+    if (!canvasEl || hasOwnWindowResized()) return;
+    setCanvasScale(canvasEl, fullscreenFitScale());
+    canvasEl.style.position = "fixed";
+    canvasEl.style.top = "50%";
+    canvasEl.style.left = "50%";
+    canvasEl.style.transform = "translate(-50%, -50%)";
+  }
+
+  function exitFullscreenLook() {
+    if (!fullscreenLookActive) return;
+    fullscreenLookActive = false;
+    document.documentElement.style.backgroundColor = fullscreenPrevBg;
+    fullscreenPrevBg = null;
+
+    if (!canvasEl || hasOwnWindowResized()) return;
+    setCanvasScale(canvasEl, 1);
+    canvasEl.style.position = "";
+    canvasEl.style.top = "";
+    canvasEl.style.left = "";
+    canvasEl.style.transform = "";
+  }
+
+  registerWidget("fullscreen", {
+    icon: ICONS.fullscreen,
+    label: LABELS.fullscreen,
+    type: "toggle",
+    shortcut: { code: "KeyF", shiftKey: true },
+    onRestore: function (ctx) {
+      fullscreenCtx = ctx;
+    },
+    onToggle: function (active, ctx) {
+      try {
+        window.fullscreen(active);
+      } catch (e) {
+        // p5's fullscreen() throws synchronously (not a rejected promise) when the
+        // browsing context disallows it. Nothing changed, so put the button back.
+        log.info("Fullscreen isn't available here.");
+        ctx.setActive(!active);
+      }
+    },
+  });
+
+  // The single source of truth for entering/exiting: fires alike for our own button, a
+  // student calling fullscreen() directly, and the browser's native Esc-to-exit — so
+  // this is the one place that resizes the canvas and keeps the button in sync, not the
+  // click handler above, which only requests the transition.
+  document.addEventListener("fullscreenchange", function () {
+    const active = !!document.fullscreenElement;
+    if (active) enterFullscreenLook();
+    else exitFullscreenLook();
+    if (fullscreenCtx) fullscreenCtx.setActive(active);
+  });
+
+  // ---------------------------------------------------------------------------------
   // Hidden-toolbar toast — a visual counterpart to the log.info in startToolbar, for
   // when the dev console isn't open. Shown only if the toolbar loads hidden AND no
   // toolbar has initialised in the last TOAST_MIN_GAP_MS, so a quick run / re-run cycle
@@ -1143,7 +1298,7 @@
     config = config || {};
     state.config = {
       position: config.position || "left",
-      widgets: config.widgets || ["grid", "hideCursor", "saveCanvas"],
+      widgets: config.widgets || ["grid", "hideCursor", "saveCanvas", "fullscreen"],
       sketchName: config.sketchName || null,
       // Friendly by default: stay quiet about failures a student can't fix. Set false to
       // also log those (localStorage blocked, stylesheet missing) via log.debug().

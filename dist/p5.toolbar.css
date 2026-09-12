@@ -24,6 +24,10 @@
      the show-delay — change it here only. */
   --p5toolbar-tooltip-delay: 0.75s;
 
+  /* Read by p5.toolbar.js (fullscreenFitMarginPx) — the gutter kept around an
+     auto-fit canvas in fullscreen, so it can't drift from the value here. */
+  --p5toolbar-fullscreen-margin: 80px;
+
   /* Spacing/size scale — every gap, padding and margin points at one of these instead
      of a bare number. Values are hand-picked, not a ratio; add a step here rather than
      reach for a raw px. */

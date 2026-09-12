@@ -99,11 +99,64 @@ jsDelivr, no npm package, no bundler.
   message that must stay on one line. A no-wrap toast is only safe with length-bounded
   content (the `saveCanvas` filename is middle-truncated first).
 
-- **Built-in widgets: `grid`, `hideCursor`, `saveCanvas`** — all three ship in the
-  default `widgets` array. `saveCanvas` is the only `type: "action"` one (fires once, no
-  pressed state); it calls p5's own `window.saveCanvas(name, "jpg")` — JPG only, filename
-  `{sketchName|"sketch"}_{YYYY-MM-DD_HH-MM-SS}` — and confirms with a `log.info` (full
-  name) plus a one-line toast (name middle-truncated, monospace).
+- **`setCanvasScale()` / `currentCanvasScale()` are the shared canvas-resize
+  primitive** — CSS `style.width`/`height`, never a `transform`, never `resizeCanvas()`.
+  Verified against p5 2.2.3's own source, not assumed: `getMouseInfo()` computes
+  `mouseX`/`mouseY` from `canvas.scrollWidth` against the canvas's logical `width`; a CSS
+  size change updates that ratio correctly, a `transform` leaves it untouched, so a
+  `transform`-based scale would desync every click from where it visually lands.
+  `currentCanvasScale()` reads the same ratio back from the DOM — `grid` uses it so
+  `GRID_SIZE_PX` (a sketch-coordinate distance) means the same sketch distance at any
+  canvas scale, not a fixed screen-pixel one; `fullscreen`'s fit-to-screen calls
+  `setCanvasScale()` directly. Any future widget that visually resizes the canvas should
+  reuse this pair rather than reimplementing the scale math.
+
+- **Built-in widgets: `grid`, `hideCursor`, `saveCanvas`, `fullscreen`** — all four ship
+  in the default `widgets` array. `saveCanvas` and `fullscreen` are the `type: "action"`
+  and `type: "toggle"` ends of the built-in set respectively that don't touch the
+  cursor resolver at all. `saveCanvas` calls p5's own `window.saveCanvas(name, "jpg")` —
+  JPG only, filename `{sketchName|"sketch"}_{YYYY-MM-DD_HH-MM-SS}` — and confirms with a
+  `log.info` (full name) plus a one-line toast (name middle-truncated, monospace).
+
+- **`fullscreen` toggles via p5's own `window.fullscreen(val)`**, not the raw Fullscreen
+  API — verified it targets `document.documentElement` (so the toolbar, a canvas
+  sibling, stays visible) and ships in p5 core, no `p5.dom` dependency. It throws
+  *synchronously* when the browsing context disallows fullscreen (a sandboxed preview
+  iframe missing the `allow-fullscreen` sandbox token, for instance) rather than
+  rejecting a promise, so the click handler wraps it in `try/catch` and calls
+  `ctx.setActive(!active)` to put the button back rather than leaving it stuck. All the
+  actual work happens in one `fullscreenchange` listener, not the click handler — that's
+  the only thing that fires consistently whether the change came from our button, a
+  student's own `fullscreen()` call, or the browser's native Esc-to-exit.
+
+- **`fullscreen`'s canvas fit only applies to a sketch with no `windowResized()`.** On
+  enter/exit it applies an aspect-preserving `setCanvasScale()` fit against the screen
+  size minus `--p5toolbar-fullscreen-margin` on every side (read via `getComputedStyle`,
+  same as the tooltip delay), then centres the canvas (`position: fixed` +
+  `translate(-50%, -50%)`) — but a sketch that already resizes itself on the native
+  resize event this triggers is left alone rather than double-handled, canvas position
+  included. That check is for *ongoing* responsive intent, not *how* the canvas was
+  originally sized: a `createCanvas(windowWidth, windowHeight)` sketch with no
+  `windowResized()` still gets the auto-fit treatment, even though it was sized from the
+  window once at load. Deliberate — there's no reliable way to detect "this canvas was
+  sized from the window" after the fact (the closest proxy, comparing `window.width`/
+  `height` against `windowWidth`/`windowHeight` at fullscreen-enter time, is a heuristic
+  a coincidentally-matching fixed canvas would also trip), and acting on it would mean
+  calling `resizeCanvas()` on the student's behalf — reshaping their coordinate space,
+  not just how it's displayed — which is a materially bigger intervention than a CSS
+  scale.
+
+- **`fullscreen`'s canvas position/size and the `<html>` background are snaps, not
+  animations.** `position` can't be transitioned without a discontinuous jump right at
+  the moment the canvas leaves normal document flow, which reads as more broken than no
+  animation; a `transitionend`-driven fade on the background was additionally unreliable
+  cross-browser for a purely cosmetic win. The background goes black on enter and back
+  to whatever it was on exit regardless of the `windowResized()` branch above — it's
+  covering for the fit's letterboxing or a self-resizing sketch's own, not something
+  tied to auto-fit specifically. `enterFullscreenLook()`/`exitFullscreenLook()` are
+  guarded by `fullscreenLookActive` so each only applies once per real transition — an
+  unguarded duplicate "entered" `fullscreenchange` with no exit between would recapture
+  `fullscreenPrevBg` as its own "black" and permanently lose the real original.
 
 - **The console stays quiet in normal use.** All output goes through the `log` helper
   (prefixes `[p5.toolbar]`), and the level is chosen by severity, not habit: `log.error`
@@ -130,6 +183,7 @@ Every widget — built-in or third-party — is a plain object passed to
   persist: true,                       // optional, toggle only — remember on/off per sketch
   onToggle(active, ctx) {},            // required for type: 'toggle'
   onActivate(ctx) {},                  // required for type: 'action'
+  onRestore(ctx) {},                   // optional, any type — see below
   shortcut: { code: 'KeyC', shiftKey: true }, // optional; any of shiftKey/ctrlKey/altKey/metaKey
 }
 ```
@@ -143,9 +197,17 @@ Every widget — built-in or third-party — is a plain object passed to
   grid's contrast toggle, say) is on the widget to save/restore through `ctx.storage`
   itself. Per-sketch, so it follows `sketchName` — without one, all Web Editor sketches
   share a bucket (see the `localStorage` note above).
-- `ctx` passed to both hooks: `{ canvas, sketchName, setCursor(value), clearCursor(),
-  storage: { get(key, fallback), set(key, value) } }` — `storage` is pre-namespaced to
-  the widget's own key space, no need to build the key yourself.
+- `onRestore(ctx)`, if present, runs once right after the button renders — before the
+  `persist: true` replay above, for any widget type. Reach for it when startup behavior
+  doesn't fit the simple on/off shape `persist` covers: applying a stored value with its
+  own expiry, or (like `fullscreen`) just capturing `ctx` for a listener registered
+  outside the widget's own hooks.
+- `ctx` passed to every hook: `{ canvas, sketchName, setCursor(value), clearCursor(),
+  storage: { get(key, fallback), set(key, value) } }`, plus `setActive(bool)` for toggle
+  widgets. `storage` is pre-namespaced to the widget's own key space, no need to build
+  the key yourself. `setActive` updates the button (icon, label, `aria-pressed`,
+  `persist` storage) exactly as a click would, without re-running `onToggle` — for state
+  that can change from outside a click, e.g. the browser reverting fullscreen on Esc.
 - `shortcut` is matched on an **exact** modifier combination (`matchesShortcut()`), not
   just "is shiftKey down" — so a `Shift+C` shortcut won't also fire on `Cmd/Ctrl+Shift+C`.
   It only fires for widgets actually included in the active `widgets` config array (bound
@@ -155,7 +217,8 @@ Every widget — built-in or third-party — is a plain object passed to
   user's own `keyPressed()` bindings. Reach for one when a widget is either hard to
   toggle by other means (`hideCursor`: with the cursor hidden, clicking a small button to
   turn it back on is itself hard to aim) or expected to be toggled often enough during a
-  session that reaching for the mouse each time is real friction (`grid`: `Shift+G`).
+  session that reaching for the mouse each time is real friction (`grid`: `Shift+G`;
+  `fullscreen`: `Shift+F`, e.g. toggling in and out while presenting).
 
 ### Third-party widgets
 
