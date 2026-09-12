@@ -29,7 +29,7 @@ version, replace `@latest` with a tag, e.g. `@0.3.1`.
 ```js
 P5Toolbar.init({
   position: "left", // "left" | "top" | "right" | "bottom"
-  widgets: ["grid", "hideCursor", "saveCanvas", "fullscreen"], // which tools to show, in order
+  widgets: ["grid", "hideCursor", "fullscreen", "saveCanvas"], // which tools to show, in order
   sketchName: "week5-perlin-noise", // optional — see below
   friendly: true, // default; set false to log setup problems for debugging
 });
@@ -64,18 +64,18 @@ changes the moment someone duplicates the sketch), so it's a manual choice.
 - **`grid`** — a coordinate grid over the canvas with a live mouse-position readout.
   Toggle with `Shift+G`. Remembers its on/off and contrast state per sketch.
 - **`hideCursor`** — hides the mouse cursor over the canvas. Toggle with `Shift+C`.
+- **`fullscreen`** — makes the page fullscreen. Toggle with `Shift+F`. If your sketch
+  doesn't already resize itself (no `windowResized()`), the canvas is scaled up to fit
+  the screen with its proportions preserved, a margin kept around it, and the page
+  background turned black. That applies even to a sketch created with
+  `createCanvas(windowWidth, windowHeight)` — only an actual `windowResized()` hands
+  sizing back to your own code; being sized from the window once at load isn't enough to
+  opt out. Not available inside an embed that blocks fullscreen (some sandboxed
+  previews) — the button logs a friendly notice instead of doing nothing silently.
 - **`saveCanvas`** — downloads the canvas as a JPG named
   `{sketchName}_{YYYY-MM-DD_HH-MM-SS}.jpg` (or `sketch_…` with no `sketchName`). JPG has
   no transparency — a transparent canvas exports with a black background; call p5's
   `saveCanvas()` yourself if you need a PNG.
-- **`fullscreen`** — makes the page fullscreen. Toggle with `Shift+F`. If your sketch doesn't already resize
-  itself (no `windowResized()`), the canvas is scaled up to fit the screen with its
-  proportions preserved, a margin kept around it, and the page background turned black.
-  That applies even to a sketch created with `createCanvas(windowWidth, windowHeight)` —
-  only an actual `windowResized()` hands sizing back to your own code; being sized from
-  the window once at load isn't enough to opt out. Not available inside an embed that
-  blocks fullscreen (some sandboxed previews) — the button logs a friendly notice
-  instead of doing nothing silently.
 
 ## Adding your own tools
 

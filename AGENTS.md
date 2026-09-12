@@ -87,6 +87,10 @@ jsDelivr, no npm package, no bundler.
   brief on-canvas toast (`.p5toolbar-toast`, fixed at top-centre) when no
   run has happened in the last 15 minutes, so a forgotten toggle-off is recoverable
   without the dev console open. The toast is `pointer-events: none` and self-dismisses.
+  A *live* toggle (the eye button or `Shift+T`) also logs, from `toggleVisibility()`
+  rather than `setVisible()` — so the startup restore path (`setVisible(savedVisible,
+  false)` in `startToolbar`) doesn't double-log. `hideCursor` logs both directions the
+  same way, from its own `onToggle`.
 
 - **The toast is a shared primitive** — `showToast(content, visibleMs, variant)` /
   `dismissToast()` in the "Toast" section. One shows at a time (a new one replaces the
@@ -111,12 +115,14 @@ jsDelivr, no npm package, no bundler.
   `setCanvasScale()` directly. Any future widget that visually resizes the canvas should
   reuse this pair rather than reimplementing the scale math.
 
-- **Built-in widgets: `grid`, `hideCursor`, `saveCanvas`, `fullscreen`** — all four ship
-  in the default `widgets` array. `saveCanvas` and `fullscreen` are the `type: "action"`
-  and `type: "toggle"` ends of the built-in set respectively that don't touch the
-  cursor resolver at all. `saveCanvas` calls p5's own `window.saveCanvas(name, "jpg")` —
-  JPG only, filename `{sketchName|"sketch"}_{YYYY-MM-DD_HH-MM-SS}` — and confirms with a
-  `log.info` (full name) plus a one-line toast (name middle-truncated, monospace).
+- **Built-in widgets: `grid`, `hideCursor`, `fullscreen`, `saveCanvas`** — that order in
+  the default `widgets` array is deliberate: the three toggles (persistent view/display
+  modes) grouped together, with the one `type: "action"` widget (fires once, no on/off
+  state, touches the cursor resolver not at all) on its own at the end, matching the
+  natural workflow of adjusting the view before capturing it. `saveCanvas` calls p5's
+  own `window.saveCanvas(name, "jpg")` — JPG only, filename
+  `{sketchName|"sketch"}_{YYYY-MM-DD_HH-MM-SS}` — and confirms with a `log.info` (full
+  name) plus a one-line toast (name middle-truncated, monospace).
 
 - **`fullscreen` toggles via p5's own `window.fullscreen(val)`**, not the raw Fullscreen
   API — verified it targets `document.documentElement` (so the toolbar, a canvas
@@ -162,8 +168,8 @@ jsDelivr, no npm package, no bundler.
   (prefixes `[p5.toolbar]`), and the level is chosen by severity, not habit: `log.error`
   only when the toolbar genuinely can't run (p5.js missing — `init` bails); `log.warn`
   only when something the caller passed is being ignored (an unregistered widget name);
-  `log.info` for deliberate friendly notices (toolbar hidden on load; cursor hidden by
-  the widget). Things a student can't
+  `log.info` for deliberate friendly notices (toolbar/cursor visibility changes, saved
+  files, etc.). Things a student can't
   fix and that don't break anything — `localStorage` blocked, the CSS `<link>` 404ing —
   stay silent. The audience is beginners; a red console line should mean something is
   actually wrong. `init({ friendly: false })` (default `true`) flips those silent

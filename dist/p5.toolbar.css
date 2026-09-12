@@ -11,7 +11,7 @@
   --p5toolbar-bg: #ffffff;
   --p5toolbar-fg: #1a1a1a;
   --p5toolbar-border: rgba(0, 0, 0, 0.12);
-  --p5toolbar-hover: rgba(0, 0, 0, 0.07);
+  --p5toolbar-hover: rgba(0, 0, 0, 0.05);
   --p5toolbar-active: rgba(0, 0, 0, 0.1);
   --p5toolbar-accent: #2563eb;
   --p5toolbar-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
@@ -48,7 +48,7 @@
   --p5toolbar-bg: #1e1e1e;
   --p5toolbar-fg: #f2f2f2;
   --p5toolbar-border: rgba(255, 255, 255, 0.2);
-  --p5toolbar-hover: rgba(255, 255, 255, 0.08);
+  --p5toolbar-hover: rgba(255, 255, 255, 0.1);
   --p5toolbar-active: rgba(255, 255, 255, 0.15);
   --p5toolbar-accent: #60a5fa;
 }

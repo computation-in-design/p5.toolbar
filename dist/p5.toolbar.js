@@ -132,10 +132,13 @@
   // (implying expand); "on" pulls the same brackets to the centre, open toward their
   // own corner (implying contract) — one visual language, reversed.
   ICONS.fullscreen = {
+    // Each bend gets an rx=3 fillet (arm length 5), matching the rx=3 used by grid's
+    // frame and the save-canvas tray, rather than a sharp turn.
     off:
       "<svg " +
       ICON_ATTRS +
-      '><path d="M3 8V3H8M21 8V3H16M3 16V21H8M21 16V21H16"></path></svg>',
+      '><path d="M3 8V6A3 3 0 0 1 6 3H8M21 8V6A3 3 0 0 0 18 3H16' +
+      'M3 16V18A3 3 0 0 0 6 21H8M21 16V18A3 3 0 0 1 18 21H16"></path></svg>',
     on:
       "<svg " +
       ICON_ATTRS +
@@ -152,7 +155,9 @@
     "</svg>";
 
   // Rounded-rect frame with one edge's middle third filled, matching the current edge.
-  // Swapped by updatePositionButton().
+  // Swapped by updatePositionButton(). rx=4 is deliberate, one step rounder than the
+  // rx=3 every other rounded-rect icon (grid's frame, the fullscreen icon's fillet)
+  // uses — kept that way by choice, not an inconsistency to fix.
   ICONS.positions = {
     left:
       "<svg " +
@@ -467,7 +472,15 @@
   }
 
   function toggleVisibility() {
-    setVisible(!state.visible);
+    const next = !state.visible;
+    setVisible(next);
+    // The startup "loaded hidden" notice (see startToolbar) is separate — this is only
+    // for a live toggle, so it doesn't fire when setVisible restores a saved state.
+    log.info(
+      next
+        ? "The toolbar is shown."
+        : "The toolbar is hidden. Press " + formatShortcut(HIDE_SHORTCUT) + " to show it."
+    );
   }
 
   // ---------------------------------------------------------------------------------
@@ -911,6 +924,7 @@
         );
       } else {
         ctx.clearCursor();
+        log.info("The cursor is shown.");
       }
     },
   });
@@ -1298,7 +1312,7 @@
     config = config || {};
     state.config = {
       position: config.position || "left",
-      widgets: config.widgets || ["grid", "hideCursor", "saveCanvas", "fullscreen"],
+      widgets: config.widgets || ["grid", "hideCursor", "fullscreen", "saveCanvas"],
       sketchName: config.sketchName || null,
       // Friendly by default: stay quiet about failures a student can't fix. Set false to
       // also log those (localStorage blocked, stylesheet missing) via log.debug().
