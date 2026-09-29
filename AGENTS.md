@@ -90,7 +90,10 @@ jsDelivr, no npm package, no bundler.
   A _live_ toggle (the eye button or `Shift+T`) also logs, from `toggleVisibility()`
   rather than `setVisible()` — so the startup restore path (`setVisible(savedVisible,
 false)` in `startToolbar`) doesn't double-log. `hideCursor` logs both directions the
-  same way, from its own `onToggle`.
+  same way, from its own `onToggle`. Both paths also call `notifyVisibilityChange()` —
+  see `onVisibilityChange` in the widget contract — though at a different point in
+  each: inline in `toggleVisibility()`, but only after `renderWidgets()` on the startup
+  path, since a widget has nothing to receive it before then.
 
 - **The toast is a shared primitive** — `showToast(content, visibleMs, variant)` /
   `dismissToast()` in the "Toast" section. One shows at a time (a new one replaces the
@@ -175,9 +178,12 @@ false)` in `startToolbar`) doesn't double-log. `hideCursor` logs both directions
   clamped to 0.5–1.5, default 1 (100%); the percentage control resets to 100% on click.
   A change updates the percentage readout directly — no toast or log, unlike the other
   built-ins, since the visible number _is_ the feedback and firing one on every step
-  would be noisy. State is `sessionStorage`, not the shared `ctx.storage`/localStorage
-  helper: a transient, current-tab view preference rather than durable saved state, so
-  there's no TTL to hand-roll — the tab closing is the expiry. Still namespaced by
+  would be noisy. The one exception is `onVisibilityChange`: hiding the toolbar takes
+  the readout with it, so that path does log the current level — it's the only way
+  left to check it with the UI gone. State is `sessionStorage`, not the shared
+  `ctx.storage`/localStorage helper: a transient, current-tab view preference rather
+  than durable saved state, so there's no TTL to hand-roll — the tab closing is the
+  expiry. Still namespaced by
   `sketchName` the same way `ctx.storage` is, for the same shared-origin reason.
 
 - **A `render()`-based widget's own grouped controls use `.p5toolbar__cluster`, not a
@@ -230,6 +236,7 @@ Every widget — built-in or third-party — is a plain object passed to
   onActivate(ctx) {},                  // required for type: 'action'
   onRestore(ctx) {},                   // optional, any type — see below
   onFullscreenChange(active, ctx) {},  // optional, any type — see below
+  onVisibilityChange(visible, ctx) {}, // optional, any type — see below
   shortcut: { code: 'KeyC', shiftKey: true }, // optional; any of shiftKey/ctrlKey/altKey/metaKey
   render(container, ctx) {},           // optional — replaces the whole shape above; see below
 }
@@ -254,9 +261,17 @@ Every widget — built-in or third-party — is a plain object passed to
   nothing to do with (the browser's native Esc-to-exit, say). It runs after
   `fullscreen`'s own canvas-fit logic, so it's the place to react when fullscreen has
   changed what's visually on screen out from under you (`zoom` uses it to reapply its
-  own scale the moment fullscreen exits). This is the one shell-level event exposed as
-  a widget hook so far, not a general subscribe-to-anything system — a narrower need
-  wouldn't justify one.
+  own scale the moment fullscreen exits).
+- `onVisibilityChange(visible, ctx)`, if present, fires for every widget that defines
+  it whenever the toolbar itself is hidden or shown — a live toggle (the eye button or
+  `Shift+T`) and loading already hidden both trigger it, the same live/startup split
+  `toggleVisibility()`/`setVisible()` already draw for the toolbar's own log line.
+  Reach for it when a widget has on-screen state that disappears along with the
+  toolbar, and the console is the only way left to check it (`zoom` logs its current
+  percentage on `visible === false`, since its readout goes with the rest of the UI).
+  These two hooks are shell-level events exposed as widget hooks, not a general
+  subscribe-to-anything system — add a new one only when a third concrete need shows
+  up, not speculatively.
 - `render(container, ctx)`, if present, replaces the entire shape above: no icon,
   label, type, or the standard button/toggle/shortcut/persist machinery — the widget
   builds and appends whatever it wants directly into `container` (the widgets row) and

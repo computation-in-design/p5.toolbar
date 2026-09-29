@@ -493,6 +493,16 @@
         ? "The toolbar is shown."
         : "The toolbar is hidden. Press " + formatShortcut(HIDE_SHORTCUT) + " to show it."
     );
+    notifyVisibilityChange(next);
+  }
+
+  // Lets a widget react to the toolbar itself disappearing — its own on-screen state
+  // (zoom's percentage readout, say) goes with it, so the console may be the only way
+  // left to check it. See onVisibilityChange in the widget contract.
+  function notifyVisibilityChange(visible) {
+    renderedWidgets.forEach(function (w) {
+      if (w.def.onVisibilityChange) w.def.onVisibilityChange(visible, w.ctx);
+    });
   }
 
   // ---------------------------------------------------------------------------------
@@ -1376,6 +1386,11 @@
       });
       if (!active) setCanvasScale(ctx.canvas, zoomLevel);
     },
+    // The percentage readout disappears along with the rest of the toolbar — this is
+    // the only way left to check the current zoom level while it's hidden.
+    onVisibilityChange: function (visible) {
+      if (!visible) log.info("Zoom is at " + Math.round(zoomLevel * 100) + "%.");
+    },
   });
 
   // ---------------------------------------------------------------------------------
@@ -1444,6 +1459,12 @@
 
     renderWidgets();
     bindShortcut();
+
+    // Widgets don't exist until renderWidgets() just above, so the startup notify has
+    // to happen here rather than alongside the log.info/toast next to savedVisible
+    // above — same notification toggleVisibility() sends on a live hide, just delayed
+    // until there's a widget to receive it.
+    if (!savedVisible) notifyVisibilityChange(false);
 
     // By now every restore above has touched storage, so storage.ok is settled.
     if (!storage.ok) {
