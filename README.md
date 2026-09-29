@@ -4,7 +4,7 @@ A lightweight floating toolbar for p5.js sketches, designed for teaching — esp
 the p5.js Web Editor — with a simple plugin API for adding your own tools. CDN-only, no
 setup required.
 
-Built-in tools: grid overlay, hide cursor, save canvas, fullscreen.
+Built-in tools: grid overlay, hide cursor, zoom, fullscreen, save canvas.
 
 ## Usage
 
@@ -29,7 +29,7 @@ version, replace `@latest` with a tag, e.g. `@0.3.1`.
 ```js
 P5Toolbar.init({
   position: "left", // "left" | "top" | "right" | "bottom"
-  widgets: ["grid", "hideCursor", "fullscreen", "saveCanvas"], // which tools to show, in order
+  widgets: ["grid", "hideCursor", "zoom", "fullscreen", "saveCanvas"], // which tools to show, in order
   sketchName: "week5-perlin-noise", // optional — see below
   friendly: true, // default; set false to log setup problems for debugging
 });
@@ -72,6 +72,11 @@ changes the moment someone duplicates the sketch), so it's a manual choice.
   sizing back to your own code; being sized from the window once at load isn't enough to
   opt out. Not available inside an embed that blocks fullscreen (some sandboxed
   previews) — the button logs a friendly notice instead of doing nothing silently.
+- **`zoom`** — a CSS-only display scale on the canvas (never `resizeCanvas()`, so your
+  sketch's own coordinates are unaffected), in 10% steps from 50% to 150%. Click the
+  percentage to reset to 100%. It's a separate view from fullscreen, not layered on top
+  of it — the controls disable themselves while fullscreen is active and pick back up
+  the moment you exit. Not saved between browser sessions.
 - **`saveCanvas`** — downloads the canvas as a JPG named
   `{sketchName}_{YYYY-MM-DD_HH-MM-SS}.jpg` (or `sketch_…` with no `sketchName`). JPG has
   no transparency — a transparent canvas exports with a black background; call p5's

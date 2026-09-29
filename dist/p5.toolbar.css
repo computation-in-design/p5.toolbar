@@ -118,6 +118,7 @@
 .p5toolbar__widgets,
 .p5toolbar__shell-controls {
   display: flex;
+  align-items: center;
   gap: var(--p5toolbar-space-1);
 
   .p5toolbar[data-orientation="vertical"] & {
@@ -176,6 +177,78 @@
     width: var(--p5toolbar-icon-size);
     height: var(--p5toolbar-icon-size);
   }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+}
+
+/* Any render()-based widget's own grouped controls (zoom's out/percentage/in, and any
+   future cluster widget) — a subtle background instead of a divider to read as one
+   unit. Lays out along the toolbar's own axis, same as .p5toolbar__widgets — a row in
+   a horizontal toolbar, a column in a vertical one (docked left/right) — so nothing
+   widget-specific is needed here, only the widget's own inner elements are
+   (zoom-percent below). */
+.p5toolbar__cluster {
+  display: flex;
+  align-items: center;
+  border-radius: var(--p5toolbar-radius-sm);
+  background: var(--p5toolbar-hover);
+
+  .p5toolbar[data-orientation="vertical"] & {
+    flex-direction: column;
+    margin-block: var(--p5toolbar-space-1);
+  }
+  .p5toolbar[data-orientation="horizontal"] & {
+    flex-direction: row;
+    margin-inline: calc(var(--p5toolbar-space-1) * 0.75);
+  }
+
+  /* :not(:disabled): same specificity as .p5toolbar__btn's own :disabled:hover reset,
+     and this rule comes later in the file, so without this it would win and a
+     disabled control (zoom's, mid-fullscreen) would still show a hover background. */
+  & .p5toolbar__btn:not(:disabled):hover {
+    background: var(--p5toolbar-hover);
+  }
+
+  /* Segmented-control look: only the cluster's own outer silhouette is rounded, along
+     whichever axis it's currently stacked on — the seams between its children stay
+     flat, so the group reads as one continuous shape rather than separate chips. No
+     gap between children, for the same reason (a visible gap between flat-edged
+     segments would look like a layout bug, not a group). Targets direct children
+     generically (:first-child/:last-child), not a fixed count or specific class, so
+     any future cluster widget gets this for free regardless of how many controls it has. */
+  & > * {
+    border-radius: 0;
+  }
+  .p5toolbar[data-orientation="vertical"] & > :first-child {
+    border-top-left-radius: var(--p5toolbar-radius-sm);
+    border-top-right-radius: var(--p5toolbar-radius-sm);
+  }
+  .p5toolbar[data-orientation="vertical"] & > :last-child {
+    border-bottom-left-radius: var(--p5toolbar-radius-sm);
+    border-bottom-right-radius: var(--p5toolbar-radius-sm);
+  }
+  .p5toolbar[data-orientation="horizontal"] & > :first-child {
+    border-top-left-radius: var(--p5toolbar-radius-sm);
+    border-bottom-left-radius: var(--p5toolbar-radius-sm);
+  }
+  .p5toolbar[data-orientation="horizontal"] & > :last-child {
+    border-top-right-radius: var(--p5toolbar-radius-sm);
+    border-bottom-right-radius: var(--p5toolbar-radius-sm);
+  }
+}
+
+.p5toolbar__zoom-percent {
+  width: auto;
+  min-width: var(--p5toolbar-btn-size);
+  font-family: var(--p5toolbar-font-mono);
+  font-size: var(--p5toolbar-font-size-tooltip-label);
 }
 
 /* ---------------------------------------------------------------------------------
@@ -198,7 +271,10 @@
   pointer-events: none;
   transition: opacity 0.12s ease;
 
-  .p5toolbar__btn:hover &,
+  /* :not(:disabled) because CSS :hover still matches a disabled button (only click
+     and focus are actually blocked) — a disabled control (zoom's, mid-fullscreen)
+     shouldn't show a tooltip promising an action a click won't perform. */
+  .p5toolbar__btn:not(:disabled):hover &,
   .p5toolbar__btn:focus-visible & {
     opacity: 1;
     transition-delay: var(--p5toolbar-tooltip-delay);
@@ -206,7 +282,7 @@
 
   /* Once the first tooltip of a session has shown, [data-tooltip-warm] (set by the JS)
      makes the rest instant — only the first hover pays the delay. */
-  .p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:hover &,
+  .p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:not(:disabled):hover &,
   .p5toolbar[data-tooltip-warm="true"] .p5toolbar__btn:focus-visible & {
     transition-delay: 0s;
   }

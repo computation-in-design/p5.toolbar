@@ -69,15 +69,15 @@ jsDelivr, no npm package, no bundler.
 - **`localStorage` namespacing depends on what's being stored.** Widget-authored storage
   (`ctx.storage`) uses `p5toolbar:{sketchName}:widget:{id}:{key}`, falling back to a
   global bucket if no `sketchName` is configured — the Web Editor's preview iframe shares
-  one origin across all sketches, so unnamespaced *widget* keys would leak state between
+  one origin across all sketches, so unnamespaced _widget_ keys would leak state between
   unrelated sketches. Shell state (toolbar position, visibility) is the opposite: always
-  global (`storage.get/set(null, ...)`), deliberately *not* namespaced per sketch, since
+  global (`storage.get/set(null, ...)`), deliberately _not_ namespaced per sketch, since
   it's a personal preference about the toolbar chrome itself — a user's "I keep it on
   the right, hidden by default" habit should follow them across every sketch, not reset
   per project. Theme works the same way, with a twist: it follows `prefers-color-scheme` (live
   changes included) until the user toggles it, at which point the chosen value is
   stored and wins over the OS. Toggling back to whatever the OS currently prefers
-  *clears* the stored value and resumes following — that's the only route back to auto,
+  _clears_ the stored value and resumes following — that's the only route back to auto,
   since a two-state button has no room for a third "auto" state. So the stored `theme`
   key only ever holds an override, never "auto". The global bucket also holds `lastInit`
   (a timestamp, every run) — it only gates how often the "toolbar is hidden" toast
@@ -87,9 +87,9 @@ jsDelivr, no npm package, no bundler.
   brief on-canvas toast (`.p5toolbar-toast`, fixed at top-centre) when no
   run has happened in the last 15 minutes, so a forgotten toggle-off is recoverable
   without the dev console open. The toast is `pointer-events: none` and self-dismisses.
-  A *live* toggle (the eye button or `Shift+T`) also logs, from `toggleVisibility()`
+  A _live_ toggle (the eye button or `Shift+T`) also logs, from `toggleVisibility()`
   rather than `setVisible()` — so the startup restore path (`setVisible(savedVisible,
-  false)` in `startToolbar`) doesn't double-log. `hideCursor` logs both directions the
+false)` in `startToolbar`) doesn't double-log. `hideCursor` logs both directions the
   same way, from its own `onToggle`.
 
 - **The toast is a shared primitive** — `showToast(content, visibleMs, variant)` /
@@ -115,19 +115,20 @@ jsDelivr, no npm package, no bundler.
   `setCanvasScale()` directly. Any future widget that visually resizes the canvas should
   reuse this pair rather than reimplementing the scale math.
 
-- **Built-in widgets: `grid`, `hideCursor`, `fullscreen`, `saveCanvas`** — that order in
-  the default `widgets` array is deliberate: the three toggles (persistent view/display
-  modes) grouped together, with the one `type: "action"` widget (fires once, no on/off
-  state, touches the cursor resolver not at all) on its own at the end, matching the
-  natural workflow of adjusting the view before capturing it. `saveCanvas` calls p5's
-  own `window.saveCanvas(name, "jpg")` — JPG only, filename
+- **Built-in widgets: `grid`, `hideCursor`, `fullscreen`, `zoom`, `saveCanvas`** — that
+  order in the default `widgets` array is deliberate: the view/display-adjustment
+  controls grouped together (the two persistent toggles, then zoom's cluster, then
+  fullscreen), with the one `type: "action"` widget (fires once, no on/off state,
+  touches the cursor resolver not at all) on its own at the end, matching the natural
+  workflow of adjusting the view before capturing it. `saveCanvas` calls p5's own
+  `window.saveCanvas(name, "jpg")` — JPG only, filename
   `{sketchName|"sketch"}_{YYYY-MM-DD_HH-MM-SS}` — and confirms with a `log.info` (full
   name) plus a one-line toast (name middle-truncated, monospace).
 
 - **`fullscreen` toggles via p5's own `window.fullscreen(val)`**, not the raw Fullscreen
   API — verified it targets `document.documentElement` (so the toolbar, a canvas
   sibling, stays visible) and ships in p5 core, no `p5.dom` dependency. It throws
-  *synchronously* when the browsing context disallows fullscreen (a sandboxed preview
+  _synchronously_ when the browsing context disallows fullscreen (a sandboxed preview
   iframe missing the `allow-fullscreen` sandbox token, for instance) rather than
   rejecting a promise, so the click handler wraps it in `try/catch` and calls
   `ctx.setActive(!active)` to put the button back rather than leaving it stuck. All the
@@ -141,7 +142,7 @@ jsDelivr, no npm package, no bundler.
   same as the tooltip delay), then centres the canvas (`position: fixed` +
   `translate(-50%, -50%)`) — but a sketch that already resizes itself on the native
   resize event this triggers is left alone rather than double-handled, canvas position
-  included. That check is for *ongoing* responsive intent, not *how* the canvas was
+  included. That check is for _ongoing_ responsive intent, not _how_ the canvas was
   originally sized: a `createCanvas(windowWidth, windowHeight)` sketch with no
   `windowResized()` still gets the auto-fit treatment, even though it was sized from the
   window once at load. Deliberate — there's no reliable way to detect "this canvas was
@@ -164,6 +165,44 @@ jsDelivr, no npm package, no bundler.
   unguarded duplicate "entered" `fullscreenchange` with no exit between would recapture
   `fullscreenPrevBg` as its own "black" and permanently lose the real original.
 
+- **`zoom` is deliberately its own view, independent of `fullscreen`'s.** Both apply a
+  CSS scale to the canvas via `setCanvasScale()`, but they never compose or hand off to
+  each other: entering fullscreen leaves `zoomLevel` untouched and disables the three
+  zoom controls (a disabled button can't fire a click to fight fullscreen's fit over
+  the canvas), and `onFullscreenChange` — see the widget contract — re-enables them and
+  reapplies the stored level the instant fullscreen exits, rather than leaving the
+  canvas at its exited-fullscreen natural size until the next manual click. 10% steps,
+  clamped to 0.5–1.5, default 1 (100%); the percentage control resets to 100% on click.
+  A change updates the percentage readout directly — no toast or log, unlike the other
+  built-ins, since the visible number _is_ the feedback and firing one on every step
+  would be noisy. State is `sessionStorage`, not the shared `ctx.storage`/localStorage
+  helper: a transient, current-tab view preference rather than durable saved state, so
+  there's no TTL to hand-roll — the tab closing is the expiry. Still namespaced by
+  `sketchName` the same way `ctx.storage` is, for the same shared-origin reason.
+
+- **A `render()`-based widget's own grouped controls use `.p5toolbar__cluster`, not a
+  divider.** `zoom`'s three controls read as one unit via a subtle background
+  (`--p5toolbar-hover`) rather than the `.p5toolbar__divider` line used elsewhere; a
+  child button's own hover is kept at that same tone so it doesn't visually fight the
+  cluster's background. `.p5toolbar__cluster` is a complete, generic base — layout
+  included, not just the background — since none of it is zoom-specific: it lays out
+  along the toolbar's own axis exactly like `.p5toolbar__widgets` does (the same
+  `.p5toolbar[data-orientation] &` split), a row in a horizontal toolbar and a column
+  in a vertical one, so any future cluster widget reaches for this one class rather
+  than re-deriving the orientation logic. Only a cluster's own inner elements need
+  their own class (`.p5toolbar__zoom-percent`, sizing zoom's numeric readout) —
+  something genuinely specific to _that_ widget's content, not the grouping mechanism.
+  `.p5toolbar__widgets`/`.p5toolbar__shell-controls` also need `align-items: center`
+  for this to look right — without it, a cluster wider than a single icon button
+  (zoom's percentage control) grows only its own column's width, leaving the plain
+  single-icon widgets flush to one side instead of centered with it.
+  `.p5toolbar__cluster` also gives its children a segmented-control look: no gap
+  between them, corners sharp except the cluster's own outer silhouette (the first
+  child's leading corners, the last child's trailing corners — "leading"/"trailing"
+  meaning top/bottom in a vertical toolbar, left/right in a horizontal one), via
+  `:first-child`/`:last-child` rather than a fixed count, so it isn't tied to zoom's
+  particular three controls.
+
 - **The console stays quiet in normal use.** All output goes through the `log` helper
   (prefixes `[p5.toolbar]`), and the level is chosen by severity, not habit: `log.error`
   only when the toolbar genuinely can't run (p5.js missing — `init` bails); `log.warn`
@@ -173,7 +212,7 @@ jsDelivr, no npm package, no bundler.
   fix and that don't break anything — `localStorage` blocked, the CSS `<link>` 404ing —
   stay silent. The audience is beginners; a red console line should mean something is
   actually wrong. `init({ friendly: false })` (default `true`) flips those silent
-  failures on via `log.debug` for anyone debugging a setup — it only *adds* output, it
+  failures on via `log.debug` for anyone debugging a setup — it only _adds_ output, it
   never downgrades a real error or warning.
 
 ## Widget contract
@@ -190,7 +229,9 @@ Every widget — built-in or third-party — is a plain object passed to
   onToggle(active, ctx) {},            // required for type: 'toggle'
   onActivate(ctx) {},                  // required for type: 'action'
   onRestore(ctx) {},                   // optional, any type — see below
+  onFullscreenChange(active, ctx) {},  // optional, any type — see below
   shortcut: { code: 'KeyC', shiftKey: true }, // optional; any of shiftKey/ctrlKey/altKey/metaKey
+  render(container, ctx) {},           // optional — replaces the whole shape above; see below
 }
 ```
 
@@ -208,8 +249,26 @@ Every widget — built-in or third-party — is a plain object passed to
   doesn't fit the simple on/off shape `persist` covers: applying a stored value with its
   own expiry, or (like `fullscreen`) just capturing `ctx` for a listener registered
   outside the widget's own hooks.
+- `onFullscreenChange(active, ctx)`, if present, fires for every widget that defines it
+  whenever fullscreen is entered or exited — including a transition your widget had
+  nothing to do with (the browser's native Esc-to-exit, say). It runs after
+  `fullscreen`'s own canvas-fit logic, so it's the place to react when fullscreen has
+  changed what's visually on screen out from under you (`zoom` uses it to reapply its
+  own scale the moment fullscreen exits). This is the one shell-level event exposed as
+  a widget hook so far, not a general subscribe-to-anything system — a narrower need
+  wouldn't justify one.
+- `render(container, ctx)`, if present, replaces the entire shape above: no icon,
+  label, type, or the standard button/toggle/shortcut/persist machinery — the widget
+  builds and appends whatever it wants directly into `container` (the widgets row) and
+  wires its own interactions from scratch. Reach for it when a widget is really a
+  cluster of controls sharing one piece of state rather than a single icon + action —
+  `zoom`'s zoom-out/percentage/zoom-in trio, sharing one `zoomLevel`, is the only
+  built-in that needs it so far. A `render`-based widget that wants a keyboard
+  shortcut, restore-on-load behavior, or the fullscreen hook above wires those up
+  itself inside `render()`, the same way `fullscreen` and `grid` already do
+  substantial setup beyond the base contract.
 - `ctx` passed to every hook: `{ canvas, sketchName, setCursor(value), clearCursor(),
-  storage: { get(key, fallback), set(key, value) } }`, plus `setActive(bool)` for toggle
+storage: { get(key, fallback), set(key, value) } }`, plus `setActive(bool)` for toggle
   widgets. `storage` is pre-namespaced to the widget's own key space, no need to build
   the key yourself. `setActive` updates the button (icon, label, `aria-pressed`,
   `persist` storage) exactly as a click would, without re-running `onToggle` — for state

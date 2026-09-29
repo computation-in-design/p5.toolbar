@@ -49,6 +49,9 @@
     grid: { off: "Show grid", on: "Hide grid" },
     saveCanvas: "Save canvas as JPG",
     fullscreen: { off: "Enter fullscreen", on: "Exit fullscreen" },
+    zoomOut: "Zoom out",
+    zoomIn: "Zoom in",
+    zoomReset: "Reset zoom",
   };
 
   // ---------------------------------------------------------------------------------
@@ -144,6 +147,11 @@
       ICON_ATTRS +
       '><path d="M8 3V8H3M16 3V8H21M8 21V16H3M16 21V16H21"></path></svg>',
   };
+
+  // Plain +/- glyphs, not a magnifying glass — the zoom cluster's own percentage
+  // readout already says "this is zoom," so a second icon metaphor is redundant.
+  ICONS.zoomOut = "<svg " + ICON_ATTRS + '><path d="M6 12H18"></path></svg>';
+  ICONS.zoomIn = "<svg " + ICON_ATTRS + '><path d="M12 6V18M6 12H18"></path></svg>';
 
   // Outlined circle, left half filled — one arc closed by the vertical diameter.
   ICONS.invert =
@@ -331,6 +339,10 @@
   // ---------------------------------------------------------------------------------
 
   const registry = {};
+  // { def, ctx } for every widget actually rendered, in config order — lets the
+  // fullscreenchange listener notify any widget that defines onFullscreenChange,
+  // without a general-purpose event-subscription system for a need this narrow.
+  const renderedWidgets = [];
 
   function registerWidget(id, definition) {
     registry[id] = definition;
@@ -720,6 +732,15 @@
   // Buttons & widgets
   // ---------------------------------------------------------------------------------
 
+  // Shared by makeButton and any widget building its own button-like element (e.g.
+  // zoom's percentage control) that needs the same hover/focus warm-up behavior.
+  function wireTooltipHover(el) {
+    el.addEventListener("mouseenter", onTooltipEnter);
+    el.addEventListener("mouseleave", onTooltipLeave);
+    el.addEventListener("focus", onTooltipEnter);
+    el.addEventListener("blur", onTooltipLeave);
+  }
+
   function makeButton(opts) {
     const btn = document.createElement("button");
     btn.type = "button";
@@ -728,10 +749,7 @@
     btn.innerHTML = opts.icon;
     btn.appendChild(buildTooltip(opts.label, opts.shortcut));
     btn.addEventListener("click", opts.onClick);
-    btn.addEventListener("mouseenter", onTooltipEnter);
-    btn.addEventListener("mouseleave", onTooltipLeave);
-    btn.addEventListener("focus", onTooltipEnter);
-    btn.addEventListener("blur", onTooltipLeave);
+    wireTooltipHover(btn);
     return btn;
   }
 
@@ -765,13 +783,29 @@
       },
       storage: {
         get: function (key, fallback) {
-          return storage.get(state.config.sketchName, "widget:" + id + ":" + key, fallback);
+          return storage.get(
+            state.config.sketchName,
+            "widget:" + id + ":" + key,
+            fallback
+          );
         },
         set: function (key, value) {
           storage.set(state.config.sketchName, "widget:" + id + ":" + key, value);
         },
       },
     };
+
+    // Every rendered widget, regardless of shape, so the fullscreenchange listener
+    // below can notify any that define onFullscreenChange (see the widget contract).
+    renderedWidgets.push({ def: def, ctx: ctx });
+
+    // A widget can take over its own rendering entirely instead of the standard
+    // single-button shape below — for one that's really a cluster of controls sharing
+    // state (zoom: zoom out / percentage / zoom in) rather than a single icon+action.
+    if (def.render) {
+      def.render(els.widgets, ctx);
+      return;
+    }
 
     const isToggle = def.type === "toggle";
     // With persist:true, a toggle widget remembers its on/off state per sketch. A
@@ -1085,11 +1119,16 @@
     };
     const stamp =
       d.getFullYear() +
-      "-" + pad(d.getMonth() + 1) +
-      "-" + pad(d.getDate()) +
-      "_" + pad(d.getHours()) +
-      "-" + pad(d.getMinutes()) +
-      "-" + pad(d.getSeconds());
+      "-" +
+      pad(d.getMonth() + 1) +
+      "-" +
+      pad(d.getDate()) +
+      "_" +
+      pad(d.getHours()) +
+      "-" +
+      pad(d.getMinutes()) +
+      "-" +
+      pad(d.getSeconds());
     return (sketchName || "sketch") + "_" + stamp;
   }
 
@@ -1135,7 +1174,9 @@
   // Reads --p5toolbar-fullscreen-margin from the CSS so this can't drift from the
   // actual gutter — change it in p5.toolbar.css only.
   function fullscreenFitMarginPx() {
-    const raw = getComputedStyle(els.root).getPropertyValue("--p5toolbar-fullscreen-margin");
+    const raw = getComputedStyle(els.root).getPropertyValue(
+      "--p5toolbar-fullscreen-margin"
+    );
     const value = parseFloat(raw);
     return isNaN(value) ? 80 : value; // stylesheet not loaded yet or property missing
   }
@@ -1214,6 +1255,127 @@
     if (active) enterFullscreenLook();
     else exitFullscreenLook();
     if (fullscreenCtx) fullscreenCtx.setActive(active);
+
+    // Fullscreen can change what's on screen out from under a widget that had nothing
+    // to do with triggering it (zoom's own scale, say) — onFullscreenChange is the one
+    // shell-level event exposed as a widget hook, for exactly that.
+    renderedWidgets.forEach(function (w) {
+      if (w.def.onFullscreenChange) w.def.onFullscreenChange(active, w.ctx);
+    });
+  });
+
+  // ---------------------------------------------------------------------------------
+  // Built-in widget: zoom — a compound widget (its own render(), not the standard
+  // single-button shape) for three controls sharing one piece of state: zoom out, the
+  // current percentage (click to reset to 100%), zoom in. A CSS-only display scale on
+  // the canvas via setCanvasScale() — the same primitive fullscreen's fit uses — but
+  // deliberately its own view, independent of fullscreen's: entering fullscreen leaves
+  // zoomLevel untouched and disables the three controls (fullscreen owns the canvas
+  // while it's active, and a disabled button can't fire a click to fight it over that);
+  // onFullscreenChange re-enables them and reapplies the stored level the moment
+  // fullscreen exits, rather than leaving the canvas at its exited-fullscreen natural
+  // size until the next manual click.
+  //
+  // Session-scoped (sessionStorage, not the shared per-run localStorage helper) and
+  // namespaced by sketchName the same way ctx.storage is — a transient view preference
+  // for the current tab, not durable saved state, so there's no TTL to hand-roll: the
+  // tab closing is the expiry.
+  // ---------------------------------------------------------------------------------
+
+  const ZOOM_MIN = 0.5;
+  const ZOOM_MAX = 1.5;
+  const ZOOM_STEP = 0.1;
+
+  let zoomLevel = 1;
+  let zoomPercentEl = null;
+  let zoomButtons = [];
+
+  function zoomStorageKey(sketchName) {
+    return "p5toolbar:" + (sketchName || "default") + ":zoom";
+  }
+
+  function loadZoomLevel(sketchName) {
+    try {
+      const raw = window.sessionStorage.getItem(zoomStorageKey(sketchName));
+      const value = raw === null ? 1 : JSON.parse(raw);
+      return value >= ZOOM_MIN && value <= ZOOM_MAX ? value : 1;
+    } catch (e) {
+      return 1; // sessionStorage blocked — zoom still works, just resets per reload
+    }
+  }
+
+  function saveZoomLevel(sketchName, value) {
+    try {
+      window.sessionStorage.setItem(zoomStorageKey(sketchName), JSON.stringify(value));
+    } catch (e) {
+      // Silently ignored, same as loadZoomLevel — not something a student can fix.
+    }
+  }
+
+  function renderZoomPercent() {
+    if (zoomPercentEl) zoomPercentEl.textContent = Math.round(zoomLevel * 100);
+  }
+
+  function setZoomLevel(ctx, value) {
+    const clamped = Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value)) * 10) / 10;
+    if (clamped === zoomLevel) return;
+    zoomLevel = clamped;
+    renderZoomPercent();
+    setCanvasScale(ctx.canvas, zoomLevel);
+    saveZoomLevel(ctx.sketchName, zoomLevel);
+  }
+
+  registerWidget("zoom", {
+    render: function (container, ctx) {
+      zoomLevel = loadZoomLevel(ctx.sketchName);
+
+      const cluster = document.createElement("div");
+      cluster.className = "p5toolbar__cluster";
+
+      const outBtn = makeButton({
+        icon: ICONS.zoomOut,
+        label: LABELS.zoomOut,
+        onClick: function () {
+          setZoomLevel(ctx, zoomLevel - ZOOM_STEP);
+        },
+      });
+
+      const percentBtn = document.createElement("button");
+      percentBtn.type = "button";
+      percentBtn.className = "p5toolbar__btn p5toolbar__zoom-percent";
+      percentBtn.setAttribute("aria-label", LABELS.zoomReset);
+      zoomPercentEl = document.createElement("span");
+      percentBtn.appendChild(zoomPercentEl);
+      percentBtn.appendChild(buildTooltip(LABELS.zoomReset));
+      percentBtn.addEventListener("click", function () {
+        setZoomLevel(ctx, 1);
+      });
+      wireTooltipHover(percentBtn);
+
+      const inBtn = makeButton({
+        icon: ICONS.zoomIn,
+        label: LABELS.zoomIn,
+        onClick: function () {
+          setZoomLevel(ctx, zoomLevel + ZOOM_STEP);
+        },
+      });
+
+      zoomButtons = [outBtn, percentBtn, inBtn];
+      cluster.appendChild(outBtn);
+      cluster.appendChild(percentBtn);
+      cluster.appendChild(inBtn);
+
+      container.appendChild(cluster);
+
+      renderZoomPercent();
+      setCanvasScale(ctx.canvas, zoomLevel);
+    },
+    onFullscreenChange: function (active, ctx) {
+      zoomButtons.forEach(function (btn) {
+        btn.disabled = active;
+      });
+      if (!active) setCanvasScale(ctx.canvas, zoomLevel);
+    },
   });
 
   // ---------------------------------------------------------------------------------
@@ -1273,9 +1435,7 @@
       // Logged on every run so a user who forgot the toolbar is toggled off (visibility
       // persists globally) isn't left wondering why it never appeared.
       log.info(
-        "The toolbar is hidden. Press " +
-          formatShortcut(HIDE_SHORTCUT) +
-          " to show it."
+        "The toolbar is hidden. Press " + formatShortcut(HIDE_SHORTCUT) + " to show it."
       );
       if (now - lastInit >= TOAST_MIN_GAP_MS) {
         showHiddenToast();
@@ -1312,7 +1472,13 @@
     config = config || {};
     state.config = {
       position: config.position || "left",
-      widgets: config.widgets || ["grid", "hideCursor", "fullscreen", "saveCanvas"],
+      widgets: config.widgets || [
+        "grid",
+        "hideCursor",
+        "fullscreen",
+        "zoom",
+        "saveCanvas",
+      ],
       sketchName: config.sketchName || null,
       // Friendly by default: stay quiet about failures a student can't fix. Set false to
       // also log those (localStorage blocked, stylesheet missing) via log.debug().
