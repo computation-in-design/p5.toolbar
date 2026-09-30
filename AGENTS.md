@@ -85,7 +85,7 @@ jsDelivr, no npm package, no bundler.
 
 - **When the toolbar loads hidden it says so** — a `log.info` every run, plus a
   brief on-canvas toast (`.p5toolbar-toast`, fixed at top-centre) when no
-  run has happened in the last 15 minutes, so a forgotten toggle-off is recoverable
+  run has happened in the last 2 minutes, so a forgotten toggle-off is recoverable
   without the dev console open. The toast is `pointer-events: none` and self-dismisses.
   A _live_ toggle (the eye button or `Shift+T`) also logs, from `toggleVisibility()`
   rather than `setVisible()` — so the startup restore path (`setVisible(savedVisible,

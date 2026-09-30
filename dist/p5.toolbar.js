@@ -1400,7 +1400,7 @@
   // (where the user plainly knows it's off) stays quiet.
   // ---------------------------------------------------------------------------------
 
-  const TOAST_MIN_GAP_MS = 15 * 60 * 1000;
+  const TOAST_MIN_GAP_MS = 2 * 60 * 1000;
   const HIDDEN_TOAST_VISIBLE_MS = 7500;
 
   function showHiddenToast() {
